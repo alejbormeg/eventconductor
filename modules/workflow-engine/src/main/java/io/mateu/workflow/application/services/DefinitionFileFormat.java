@@ -1,18 +1,48 @@
 package io.mateu.workflow.application.services;
 
+import java.util.List;
+
 /**
  * File-format rules for workflow definition files. Besides the plain {@code .json} / {@code .yaml}
  * / {@code .yml} forms, EventConductor has a first-class {@code .ec} extension whose content is
  * either JSON or YAML — decided by sniffing, since the extension doesn't say which.
+ *
+ * <p>A definition can also say what it is in a suffix that editors already know as YAML:
+ * {@code order.workflow.yaml} or {@code order.ec.yaml} (and their {@code .yml} twins). Those are
+ * plain {@code .yaml} files as far as parsing and scanning go — they need no rule of their own here
+ * — but the compound suffix is not part of the definition's name: a file that declares no id gets
+ * {@code order} from either, not {@code order.workflow} (see {@code DerivedIds}).
  */
 public final class DefinitionFileFormat {
 
     /** The first-class EventConductor definition extension. */
     public static final String EC_EXTENSION = ".ec";
 
+    /**
+     * The compound suffixes that mark a YAML file as a workflow definition. They are what the IDE
+     * plugins associate with the workflow schema and graph editor besides {@code .ec}.
+     */
+    public static final List<String> YAML_WORKFLOW_SUFFIXES =
+            List.of(".workflow.yaml", ".workflow.yml", ".ec.yaml", ".ec.yml");
+
+    /**
+     * The classpath patterns definitions are loaded from, relative to {@code classpath:/workflows/}.
+     * They do not overlap — {@code *.yaml}/{@code *.yml} already cover every compound suffix — so no
+     * file is loaded twice.
+     *
+     * <p>One pattern per extension, never {@code *.{yaml,yml}}: Spring's {@code AntPathMatcher} has no
+     * brace alternation, and reads {@code {yaml,yml}} as a URI-template variable that matches anything
+     * — so that pattern used to match every file with a dot in its name, loading each {@code .json}
+     * and {@code .ec} a second time (through the YAML parser) and trying stray files like a README.
+     */
+    public static final List<String> CLASSPATH_PATTERNS = List.of("*.json", "*.yaml", "*.yml", "*" + EC_EXTENSION);
+
     private DefinitionFileFormat() {}
 
-    /** Whether a file name is a recognised workflow-definition file (.ec, .json, .yaml, .yml). */
+    /**
+     * Whether a file name is a recognised workflow-definition file (.ec, .json, .yaml, .yml — which
+     * includes the compound {@code .workflow.yaml} / {@code .ec.yaml} forms).
+     */
     public static boolean isDefinitionFileName(String name) {
         if (name == null) return false;
         var n = name.toLowerCase();
