@@ -66,4 +66,25 @@ class ClasspathCronScheduleLoaderTest {
         assertThat(DefinitionFileFormat.isDefinitionFileName("nightly-cron.yaml")).isTrue();
         assertThat(DefinitionFileFormat.isDefinitionFileName("cron.json")).isTrue();
     }
+
+    @Test
+    void aDatabaseDownAtStartupDoesNotFailTheBootAndTheLoadIsRetried() throws Exception {
+        var importer = mock(CronScheduleImporter.class);
+        var stored = new java.util.concurrent.CountDownLatch(1);
+        when(importer.importSource(anyString(), org.mockito.ArgumentMatchers.anyList()))
+                .thenThrow(new IllegalStateException("Could not open JPA EntityManager for transaction"))
+                .thenThrow(new IllegalStateException("still down"))
+                .thenAnswer(invocation -> {
+                    stored.countDown();
+                    return new CronScheduleImporter.Result(List.of(), List.of());
+                });
+        var flaky = new ClasspathCronScheduleLoader(importer);
+
+        flaky.loadOrRetryInBackground(10); // must not throw
+
+        assertThat(stored.await(5, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+        org.mockito.Mockito.verify(importer, org.mockito.Mockito.times(3))
+                .importSource(anyString(), org.mockito.ArgumentMatchers.anyList());
+        flaky.stop();
+    }
 }
