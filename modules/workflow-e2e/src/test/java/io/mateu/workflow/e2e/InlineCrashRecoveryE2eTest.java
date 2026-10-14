@@ -10,6 +10,7 @@ import io.mateu.workflow.e2e.support.TestWorker;
 import io.mateu.workflow.infra.out.persistence.OutboxMessageEntityRepository;
 import io.mateu.workflow.infra.out.persistence.OutboxMessageStatus;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.config.BeanPostProcessor;
 import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.ConfigurableApplicationContext;
@@ -18,6 +19,7 @@ import java.time.Duration;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
@@ -36,8 +38,27 @@ class InlineCrashRecoveryE2eTest {
             "jdbc:h2:file:./target/inline-crash-db;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE;MODE=PostgreSQL";
 
     private ConfigurableApplicationContext boot(boolean relayEnabled, String ddlAuto) {
+        return boot(relayEnabled, ddlAuto, worker -> { });
+    }
+
+    /**
+     * Boots a node whose {@link TestWorker} is set up by {@code worker} as soon as the bean exists —
+     * before the relay can hand it anything. Registering a behavior after {@code run()} returns is a
+     * race on a node with the relay on: by then the lapsed claim may already have been swept and the
+     * task delivered to the worker's default behavior, which completes without variables.
+     */
+    private ConfigurableApplicationContext boot(boolean relayEnabled, String ddlAuto, Consumer<TestWorker> worker) {
         return new SpringApplicationBuilder(InlineCrashTestApp.class)
                 .web(WebApplicationType.NONE)
+                .initializers(context -> context.getBeanFactory().addBeanPostProcessor(new BeanPostProcessor() {
+                    @Override
+                    public Object postProcessAfterInitialization(Object bean, String beanName) {
+                        if (bean instanceof TestWorker testWorker) {
+                            worker.accept(testWorker);
+                        }
+                        return bean;
+                    }
+                }))
                 .run(
                         "--workflow.mode=embedded",
                         "--workflow.persistence=jpa",
@@ -85,8 +106,8 @@ class InlineCrashRecoveryE2eTest {
         }
 
         // --- Node B: relay on. A's claim lapses, the relay takes over, the process finishes. ---
-        try (var nodeB = boot(true, "update")) {
-            nodeB.getBean(TestWorker.class).on("book", TestWorker.succeed(TestWorker.var("confirmation", "C-CR")));
+        try (var nodeB = boot(true, "update",
+                worker -> worker.on("book", TestWorker.succeed(TestWorker.var("confirmation", "C-CR"))))) {
             var processes = nodeB.getBean(ProcessRepository.class);
             await().atMost(Duration.ofSeconds(20)).untilAsserted(() ->
                     assertThat(processes.findByBusinessKey("inline-crash-1").map(Process::getStatus))
