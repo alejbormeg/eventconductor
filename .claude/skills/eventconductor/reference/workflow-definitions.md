@@ -15,10 +15,13 @@ new instances, cron included, are created born-`PAUSED`; in the schema, default 
 only so exports round-trip),
 `draftOfId?`, `limitConcurrentExecutions?`, `maxConcurrentExecutions?`, `enqueueOnLimit?`,
 `cronExpression?` (Spring cron: start a new instance per occurrence, multi-pod safe),
-`schedules?` (`[{cron, zone?, variables?: {name: value}}]` — several scheduled starts, each with an
-IANA zone (default `workflow.time.zone`) and initial variables; coexists with `cronExpression`.
-Entries may instead live in `cron.yaml` beside the definitions — `[{cron, workflow, zone?, variables?}]`,
-never read as a definition; unknown `workflow` → logged and skipped),
+`schedules?` (`[{id?, cron, zone?, variables?: {name: value}}]` — several scheduled starts, each with an
+optional `id` (slug, one schedule per id across the engine), an IANA zone (default `workflow.time.zone`)
+and initial variables; coexists with `cronExpression`.
+Entries may instead live in `cron.yaml` beside the definitions — `[{id?, cron, workflow, zone?, variables?}]`,
+never read as a definition; unknown `workflow` → logged and skipped. Schedules can also be created from
+the admin UI / `/workflow/api/schedules` / MCP; a file entry with the same `id` takes such a schedule
+over on import, and an entry removed from its file is deleted),
 `defaultMaxStepExecutions?` (validated metadata, not enforced at runtime today),
 `processLock?` (`{name?, key}` — serialize instances by a JEXL key),
 `syncInvocation?` (`{enabled, onFailure: REPLY_IMMEDIATELY|REPLY_AFTER_COMPENSATION, onLockBusy: WAIT|FAIL, defaultDeadlineMs}` —

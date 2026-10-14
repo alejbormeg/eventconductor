@@ -3,6 +3,7 @@ package io.mateu.workflow.infra.in.ui;
 import io.mateu.uidl.annotations.Menu;
 import io.mateu.workflow.infra.in.ui.pages.WorkflowDefinitions;
 import io.mateu.workflow.infra.in.ui.pages.analytics.Analytics;
+import io.mateu.workflow.infra.in.ui.pages.schedules.Schedules;
 import io.mateu.workflow.infra.in.ui.pages.taskcontracts.TaskContracts;
 
 /**
@@ -12,9 +13,11 @@ import io.mateu.workflow.infra.in.ui.pages.taskcontracts.TaskContracts;
  * <p>Definitions belong here because a definition is configuration — imported from the classpath,
  * git or the database, never authored on the page — and Analytics because it measures the engine
  * rather than the business: both are read by whoever runs the platform, not by whoever uses it.
+ * Schedules too: when a workflow starts on its own is configuration, whether it was declared in a file
+ * or created on the page.
  *
  * <p>See {@link WorkflowOperationsMenu} for the other half, and for why {@link WorkflowMenu} is
- * left offering all four.
+ * left offering all of them.
  */
 public class WorkflowAdminMenu {
 
@@ -23,6 +26,9 @@ public class WorkflowAdminMenu {
 
     @Menu
     TaskContracts tasks;
+
+    @Menu
+    Schedules schedules;
 
     @Menu
     Analytics analytics;

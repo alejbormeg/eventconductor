@@ -71,8 +71,8 @@ public class WorkflowDefinitionDetailView implements VisibilitySupplier {
     final ResumeWorkflowUseCase resumeWorkflowUseCase;
     /** JPA-only: absent in memory mode, which is why the "Versions" tab is then hidden. */
     final ObjectProvider<WorkflowDefinitionVersionQueryService> versionQueryProvider;
-    /** The cron.yaml schedules, so the ones targeting this definition are listed with its own. */
-    final ObjectProvider<io.mateu.workflow.application.out.CronScheduleRepository> cronScheduleRepositoryProvider;
+    /** Every schedule targeting this definition — its own, cron.yaml entries, the ones created on the Schedules page. */
+    final ObjectProvider<io.mateu.workflow.application.services.ScheduleService> scheduleServiceProvider;
 
     @Hidden
     String id;
@@ -133,8 +133,9 @@ public class WorkflowDefinitionDetailView implements VisibilitySupplier {
     String paused;
 
     // ── "Schedules" tab: every scheduled start of this definition — its cronExpression, its own
-    //    schedules and the cron.yaml entries that target it — with zone, variables and next start.
-    //    Hidden when there is none. ─────────────────────────────────────────────────────────────────
+    //    schedules, the cron.yaml entries and the schedules created on the Schedules page that target
+    //    it — with zone, variables, next start and status; each id opens the schedule's page, where it
+    //    is operated. Hidden when there is none. ──────────────────────────────────────────────────────
     @Tab("Schedules")
     @Label("")
     List<ScheduleRow> schedules;
@@ -169,7 +170,7 @@ public class WorkflowDefinitionDetailView implements VisibilitySupplier {
                 : "unlimited";
         this.cron = def.cronExpression() == null || def.cronExpression().isBlank()
                 ? "—" : def.cronExpression();
-        this.schedules = scheduleRows(def, java.time.Instant.now());
+        this.schedules = scheduleRows(def.id());
         this.schedulesAvailable = !schedules.isEmpty();
         if (schedulesAvailable && "—".equals(cron)) {
             this.cron = schedules.size() + " schedule(s) — see the Schedules tab";
@@ -217,30 +218,13 @@ public class WorkflowDefinitionDetailView implements VisibilitySupplier {
         return this;
     }
 
-    /** Every scheduled start of {@code def}, in the order the scheduler considers them. */
-    List<ScheduleRow> scheduleRows(io.mateu.workflow.domain.aggregates.WorkflowDefinition def, java.time.Instant now) {
-        var rows = new java.util.ArrayList<ScheduleRow>();
-        if (def.cronExpression() != null && !def.cronExpression().isBlank()) {
-            // The shorthand is read in the JVM's zone, as it always has been, whatever workflow.time.zone says.
-            var jvmZone = java.time.ZoneId.systemDefault().getId();
-            var legacy = new io.mateu.workflow.domain.aggregates.CronSchedule(def.cronExpression(), jvmZone, null);
-            var row = ScheduleRow.of("cronExpression", "cronExpression", legacy, jvmZone, now);
-            rows.add(new ScheduleRow(row.id(), row.declaredIn(), row.cron(), jvmZone + " (JVM)", row.variables(),
-                    row.nextFire()));
+    /** Every schedule of the definition {@code definitionId}, in the order the scheduler considers them. */
+    List<ScheduleRow> scheduleRows(String definitionId) {
+        var service = scheduleServiceProvider == null ? null : scheduleServiceProvider.getIfAvailable();
+        if (service == null) {
+            return List.of();
         }
-        var own = def.schedules() == null ? List.<io.mateu.workflow.domain.aggregates.CronSchedule>of() : def.schedules();
-        for (int i = 0; i < own.size(); i++) {
-            rows.add(ScheduleRow.of("s" + i, "definition (schedules[" + i + "])", own.get(i), ScheduleRow.defaultZone(), now));
-        }
-        var cronFiles = cronScheduleRepositoryProvider == null ? null : cronScheduleRepositoryProvider.getIfAvailable();
-        if (cronFiles != null) {
-            for (var fileSchedule : cronFiles.findByWorkflowId(def.id())) {
-                rows.add(ScheduleRow.of("f" + fileSchedule.source() + "#" + fileSchedule.index(),
-                        "cron.yaml (" + fileSchedule.source() + ")", fileSchedule.schedule(),
-                        ScheduleRow.defaultZone(), now));
-            }
-        }
-        return rows;
+        return service.list(definitionId, null).stream().map(ScheduleRow::of).toList();
     }
 
     /**

@@ -13,15 +13,22 @@ import java.util.Map;
  * <p>Carried in a definition's {@code schedules} list, and — with the workflow it targets — in a
  * {@code cron.yaml} file next to the definitions (see {@code CronFileSchedule}).
  *
+ * @param id        the schedule's name, optional ({@code nightly-report}): one schedule per id across
+ *                  the engine. It is what a pause is kept under, and what a schedule created from the
+ *                  UI or the API is matched by when the same id later arrives in a file — the file's
+ *                  entry then replaces it. Null means none: the engine derives one (see
+ *                  {@code Schedule}).
  * @param cron      a Spring cron expression: six fields, seconds first ({@code "0 0 9 * * MON-FRI"})
  * @param zone      the IANA zone the expression is read in; null means the engine's
  *                  {@code workflow.time.zone} (the JVM's zone unless configured)
  * @param variables the process variables each start is created with, by name; null or empty means none
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
-public record CronSchedule(String cron, String zone, Map<String, String> variables) {
+@com.fasterxml.jackson.annotation.JsonPropertyOrder({"id", "cron", "zone", "variables"})
+public record CronSchedule(String id, String cron, String zone, Map<String, String> variables) {
 
     public CronSchedule {
+        id = id == null || id.isBlank() ? null : id.trim();
         cron = cron == null ? null : cron.trim();
         zone = zone == null || zone.isBlank() ? null : zone.trim();
         // Insertion order kept: it is the order the author wrote the variables in, and the order the
@@ -29,9 +36,19 @@ public record CronSchedule(String cron, String zone, Map<String, String> variabl
         variables = variables == null ? null : Collections.unmodifiableMap(new LinkedHashMap<>(variables));
     }
 
-    /** A schedule with no zone of its own and no variables. */
+    /** A schedule without an id of its own. */
+    public CronSchedule(String cron, String zone, Map<String, String> variables) {
+        this(null, cron, zone, variables);
+    }
+
+    /** A schedule with no id, no zone of its own and no variables. */
     public CronSchedule(String cron) {
-        this(cron, null, null);
+        this(null, cron, null, null);
+    }
+
+    /** The same schedule under another id (null for none). */
+    public CronSchedule withId(String newId) {
+        return new CronSchedule(newId, cron, zone, variables);
     }
 
     /**

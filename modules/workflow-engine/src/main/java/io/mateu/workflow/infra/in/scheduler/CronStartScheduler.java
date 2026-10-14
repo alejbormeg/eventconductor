@@ -35,6 +35,7 @@ public class CronStartScheduler {
 
     final WorkflowDefinitionRepository workflowDefinitionRepository;
     final io.mateu.workflow.application.out.CronScheduleRepository cronScheduleRepository;
+    final io.mateu.workflow.application.out.SchedulePauseRepository schedulePauseRepository;
     final IngressRouter ingressRouter;
     final JdbcTemplate jdbcTemplate;
     final DbLockDialect dbLockDialect;
@@ -62,7 +63,7 @@ public class CronStartScheduler {
                         jdbcTemplate.execute((org.springframework.jdbc.core.ConnectionCallback<Void>) con -> {
                             if (!dbLockDialect.tryLock(con, LOCK_ID)) return null;
                             try {
-                                CronStarts.fireDue(workflowDefinitionRepository, cronScheduleRepository,
+                                CronStarts.fireDue(workflowDefinitionRepository, cronScheduleRepository, schedulePauseRepository,
                                         ingressRouter::route, lastFireTimes, Instant.now());
                             } finally {
                                 dbLockDialect.unlock(con, LOCK_ID);

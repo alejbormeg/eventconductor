@@ -10,8 +10,9 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 /**
- * One {@code cron.yaml} entry (see {@code CronScheduleRepository}). Declared here as well as in
- * {@code V37__cron_schedules.sql}, for the schemas {@code ddl-auto} creates.
+ * One {@code cron.yaml} entry, or one schedule created through the engine (source {@code ui}) — see
+ * {@code CronScheduleRepository}. Declared here as well as in {@code V37__cron_schedules.sql} and
+ * {@code V38__schedule_ids_and_pauses.sql}, for the schemas {@code ddl-auto} creates.
  */
 @Entity
 @Table(name = "cron_schedule")
@@ -43,4 +44,8 @@ public class CronScheduleEntity {
 
     @Column(name = "variables_json", columnDefinition = "TEXT")
     private String variablesJson;
+
+    /** The schedule's declared id; null for a {@code cron.yaml} entry that declares none. */
+    @Column(name = "schedule_id", length = 160)
+    private String scheduleId;
 }

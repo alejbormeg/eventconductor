@@ -33,7 +33,7 @@ Access the workflow engine by navigating to `http://localhost:8191/_workflow` or
 
 :::note[Two base URLs since 2.12.0]
 The engine serves its UI in two halves. `/_workflow` carries the operations pages — Processes and
-Steps — and `/_workflow-admin` carries Definitions and Analytics. The forms engine is split the
+Steps — and `/_workflow-admin` carries Definitions, Tasks, Schedules and Analytics. The forms engine is split the
 same way, `/_forms` and `/_forms-admin`.
 
 Same pod either way; the split exists so a deployment with two consoles can put administration
@@ -203,6 +203,39 @@ Neither is offered for a `COMPLETED` or `COMPENSATED` process. Both are terminal
 compensated process already rolled back, and running it again is a new process, not a repeat of
 this one.
 
+### Schedules
+
+Navigate via **Workflow → Schedules** (admin console).
+
+Every scheduled start the engine knows, one per id, wherever it is declared: a definition's
+`cronExpression` or `schedules`, a `cron.yaml` imported from the classpath, a directory or git, or
+created right here. Columns: **Id**, **Workflow**, **Cron**, **When** (the cron in words, for the
+usual shapes), **Zone**, **Next start**, **Source** (`Definition`, `cron.yaml (git)`,
+`cron.yaml (directory)`, `cron.yaml (classpath)`, `UI/API`) and **Status** (**Active**, **Paused**,
+**Workflow inactive**, **Invalid**). Search matches id, workflow, cron, source and variables; the
+filters narrow by workflow, where it is declared and status. **Pause** and **Resume** act on the
+selected rows.
+
+**New** opens the form: **Id** (fixed once created), **Workflow**, **Cron** (Spring, six fields,
+seconds first), **Zone** (empty: `workflow.time.zone`) and **Variables**. Saving lands on the
+schedule's page with its next five starts.
+
+A schedule's page shows its values, source and ownership, whether and since when it is paused, and:
+
+| Button | Description |
+|--------|-------------|
+| **Pause** / **Resume** | Any schedule. A paused one does not fire; resuming does not replay what fell due meanwhile. The pause is kept by id, so it survives re-imports of the schedule's file |
+| **Run now** | Any schedule, paused or not: start one process now with its variables (asks first) |
+| **Edit** / **Delete** | Only schedules created here (source UI/API). One declared in a file is changed in that file |
+
+Under **Promote to git** the page gives the schedule's `cron.yaml` entry, id included. Commit it
+next to the definitions: on the next import the file owns the schedule — its values and source
+replace the ones set here, its pause carries over — and if it later disappears from git it is
+deleted. See [Managing schedules](/guides/starting-a-process/#managing-schedules-from-the-ui-the-rest-api-and-mcp).
+
+The definition detail's **Schedules** tab lists the same schedules for one workflow, each id a link
+to its page.
+
 ### Analytics
 
 Navigate via **Workflow → Analytics**.
@@ -304,6 +337,9 @@ http://localhost:8191/_workflow          Workflow Engine — operations
 
 http://localhost:8191/_workflow-admin    Workflow Engine — administration
   └─ Workflow → Definitions             Workflow definitions list
+  └─ Workflow → Tasks                   Task contracts
+  └─ Workflow → Schedules               Every schedule: create, pause/resume, run now, promote to git
+       └─ View                          Schedule detail
   └─ Workflow → Analytics               Per-definition analytics & bottlenecks
 
 http://localhost:8191/_forms             Forms Engine — operations

@@ -269,6 +269,15 @@
         "cron"
       ],
       "properties": {
+        "id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+          "maxLength": 100,
+          "description": "Optional name of the schedule (letters, digits, '.', '_', '-'), unique across the engine. A pause is kept under it, and a schedule created from the admin UI, REST API or MCP with the same id is replaced by this entry when the definition is imported: the file owns it from then on. Absent means the engine derives an id from the workflow and the entry's content."
+        },
         "cron": {
           "type": "string",
           "minLength": 1,

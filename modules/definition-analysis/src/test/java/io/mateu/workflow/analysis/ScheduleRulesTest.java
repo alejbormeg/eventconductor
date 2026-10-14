@@ -53,4 +53,28 @@ class ScheduleRulesTest {
         assertThat(ScheduleRules.isCronFileName("cron.json")).isFalse();
         assertThat(ScheduleRules.isCronFileName(null)).isFalse();
     }
+
+    @Test
+    void anIdIsOptionalAndASlugWhenGiven() {
+        assertThat(ScheduleRules.isValidId(null)).isTrue();
+        assertThat(ScheduleRules.isValidId(" ")).isTrue();
+        assertThat(ScheduleRules.isValidId("nightly-report")).isTrue();
+        assertThat(ScheduleRules.isValidId("Billing.EOM_close-2")).isTrue();
+        assertThat(ScheduleRules.isValidId("-leading-dash")).isFalse();
+        assertThat(ScheduleRules.isValidId("with space")).isFalse();
+        assertThat(ScheduleRules.isValidId("daily~f1234")).isFalse();
+        assertThat(ScheduleRules.isValidId("a/b")).isFalse();
+        assertThat(ScheduleRules.isValidId("x".repeat(ScheduleRules.MAX_ID_LENGTH))).isTrue();
+        assertThat(ScheduleRules.isValidId("x".repeat(ScheduleRules.MAX_ID_LENGTH + 1))).isFalse();
+        assertThat(ScheduleRules.violations("bad id", "0 0 9 * * *", null, "entry 0"))
+                .containsExactly("entry 0: 'bad id' is not a valid schedule id (letters, digits, '.', '_' and '-',"
+                        + " starting with a letter or digit, at most 100 characters)");
+    }
+
+    @Test
+    void anIdDeclaredTwiceInOneListIsReportedOnce() {
+        assertThat(ScheduleRules.duplicateIdViolations(java.util.Arrays.asList("a", null, "b", "a", "a", " "), "cron.yaml"))
+                .containsExactly("cron.yaml: schedule id 'a' is declared more than once");
+        assertThat(ScheduleRules.duplicateIdViolations(java.util.List.of("a", "b"), null)).isEmpty();
+    }
 }

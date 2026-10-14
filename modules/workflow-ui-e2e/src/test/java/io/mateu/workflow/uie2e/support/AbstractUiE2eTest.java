@@ -105,7 +105,9 @@ public abstract class AbstractUiE2eTest {
                 // The test worker's own two, for the same reason: its pages are in this shell, and
                 // a row left by the previous journey turns "the list shows what I recorded" into
                 // an assertion about test order.
-                "received_task", "task_override")) {
+                "received_task", "task_override",
+                // Schedules created by a journey, and their pauses.
+                "cron_schedule_pause", "cron_schedule")) {
             jdbc.execute("delete from " + table);
         }
     }

@@ -36,6 +36,12 @@ ia-agent-service  (port 8095)
 | `getWorkflowAnalytics` | Per-definition analytics: counts by status, rates, throughput per day, avg/p95 durations, bottleneck step ([guide](/guides/analytics/)) |
 | `findBottleneck` | Where processes get stuck: slowest step, steps with waiting instances, steps with failures |
 | `importWorkflowDefinitionsFromGit` | Pull and upsert workflow JSON files from Git |
+| `listWorkflowDefinitions` | The definitions (id, name, status, whether they accept new instances) — what a schedule can start |
+| `listSchedules` / `getSchedule` | Every schedule, optionally of one workflow: cron (and in words), zone, variables, source, whether it is editable, paused, next starts |
+| `createSchedule` / `updateSchedule` / `deleteSchedule` | Manage the schedules created through the engine (source UI/API). A schedule declared in a definition or a `cron.yaml` is owned by its file and refused here |
+| `pauseSchedule` / `resumeSchedule` | Pause or resume any schedule; the pause is kept by id and survives re-imports |
+| `runScheduleNow` | Start the schedule's workflow once, now, with its variables |
+| `exportScheduleYaml` | The schedule's `cron.yaml` entry, id included, to promote it to git ([lifecycle](/guides/starting-a-process/#managing-schedules-from-the-ui-the-rest-api-and-mcp)) |
 
 ### Forms engine (`forms-engine`, port 8106)
 

@@ -31,6 +31,7 @@ class CronSchedulesE2eTest extends AbstractE2eTest {
 
     @Autowired WorkflowDefinitionRepository workflowDefinitionRepository;
     @Autowired CronScheduleRepository cronScheduleRepository;
+    @Autowired io.mateu.workflow.application.services.ScheduleService scheduleService;
 
     @Test
     void cronYamlIsLoadedAsSchedulesNotAsADefinition() {
@@ -61,6 +62,35 @@ class CronSchedulesE2eTest extends AbstractE2eTest {
         // The definition schedule and the cron.yaml entry are told apart by their keys.
         assertThat(started("cron-vars-cron-s0-")).allSatisfy(p ->
                 assertThat(p.getVariables()).doesNotContain(new Variable("source", "cron-file")));
+    }
+
+    /**
+     * E2E-CRON-05 — a schedule created through the engine (memory mode) fires through the real
+     * scheduler, stops while paused, and "run now" starts one process under a manual key.
+     */
+    @Test
+    void aScheduleCreatedThroughTheEngineFiresPausesAndRunsNow() throws Exception {
+        worker.on("tick", TestWorker.succeed());
+        scheduleService.create(new io.mateu.workflow.application.services.ScheduleService.ScheduleDraft(
+                "e2e-every-second", "cron-vars", "* * * * * *", "UTC", java.util.Map.of("source", "ui")));
+        try {
+            await().atMost(Duration.ofSeconds(15)).untilAsserted(() ->
+                    assertThat(started("cron-vars-cron-e2e-every-second-")).anySatisfy(p ->
+                            assertThat(p.getVariables()).contains(new Variable("source", "ui"))));
+
+            scheduleService.pause("e2e-every-second", "e2e");
+            Thread.sleep(600);   // a scan in flight when the pause landed may still fire once
+            var whilePaused = started("cron-vars-cron-e2e-every-second-").size();
+            Thread.sleep(2_000);
+            assertThat(started("cron-vars-cron-e2e-every-second-")).hasSize(whilePaused);
+
+            var run = scheduleService.runNow("e2e-every-second", "e2e");
+            await().atMost(Duration.ofSeconds(15)).untilAsserted(() ->
+                    assertThat(started(run.businessKey())).singleElement()
+                            .satisfies(p -> assertThat(p.getStatus()).isEqualTo(ProcessStatus.COMPLETED)));
+        } finally {
+            scheduleService.delete("e2e-every-second");
+        }
     }
 
     private List<Process> started(String businessKeyPrefix) {

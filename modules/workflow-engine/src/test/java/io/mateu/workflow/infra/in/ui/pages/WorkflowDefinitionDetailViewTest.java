@@ -43,25 +43,39 @@ class WorkflowDefinitionDetailViewTest {
                                 java.util.Map.of("region", "AMER"))),
                 new io.mateu.workflow.domain.aggregates.CronFileSchedule("/srv/defs", 1, "other",
                         new io.mateu.workflow.domain.aggregates.CronSchedule("@daily"))));
-        org.springframework.beans.factory.ObjectProvider<io.mateu.workflow.application.out.CronScheduleRepository> provider =
-                mock(org.springframework.beans.factory.ObjectProvider.class);
-        when(provider.getIfAvailable()).thenReturn(cronFiles);
-        var view = new WorkflowDefinitionDetailView(null, null, null, null, null, null, null, provider);
         var def = new io.mateu.workflow.domain.aggregates.WorkflowDefinition("report", "Report", 1, null, false, 0,
                 false, "0 0 3 * * *", 0, List.of())
                 .withSchedules(List.of(new io.mateu.workflow.domain.aggregates.CronSchedule("0 0 9 * * MON-FRI",
                         "Europe/Madrid", new java.util.LinkedHashMap<>(java.util.Map.of("region", "EMEA")))));
+        var definitions = mock(io.mateu.workflow.application.out.WorkflowDefinitionRepository.class);
+        when(definitions.findAll()).thenReturn(List.of(def));
+        var pauses = new io.mateu.workflow.infra.out.memory.InMemorySchedulePauseRepository();
+        var service = new io.mateu.workflow.application.services.ScheduleService(definitions, cronFiles, pauses,
+                (java.util.function.Consumer<io.mateu.workflow.dtos.events.integration.ProcessCreationRequested>) c -> { });
+        service.withClock(() -> java.time.Instant.parse("2026-10-14T10:00:00Z"));
+        org.springframework.beans.factory.ObjectProvider<io.mateu.workflow.application.services.ScheduleService> provider =
+                mock(org.springframework.beans.factory.ObjectProvider.class);
+        when(provider.getIfAvailable()).thenReturn(service);
+        var view = new WorkflowDefinitionDetailView(null, null, null, null, null, null, null, provider);
+        var fileEntryId = "report~f" + io.mateu.workflow.domain.aggregates.Schedule.contentHash(
+                new io.mateu.workflow.domain.aggregates.CronSchedule("0 0 18 * * *", "UTC", java.util.Map.of("region", "AMER")));
+        pauses.save(new io.mateu.workflow.domain.aggregates.SchedulePause(fileEntryId, java.time.Instant.EPOCH, "ops"));
 
-        var rows = view.scheduleRows(def, java.time.Instant.parse("2026-10-14T10:00:00Z"));
+        var rows = view.scheduleRows("report");
 
         assertThat(rows).extracting(ScheduleRow::declaredIn).containsExactly(
-                "cronExpression", "definition (schedules[0])", "cron.yaml (/srv/defs)");
+                "definition (cronExpression)", "definition (schedules[0])", "cron.yaml (directory) /srv/defs");
         assertThat(rows.get(1).zone()).isEqualTo("Europe/Madrid");
         assertThat(rows.get(1).variables()).isEqualTo("region=EMEA");
         assertThat(rows.get(1).nextFire()).isEqualTo("2026-10-15 09:00:00 +02:00 (Europe/Madrid)");
         assertThat(rows.get(2).variables()).isEqualTo("region=AMER");
         assertThat(rows.get(2).nextFire()).isEqualTo("2026-10-14 18:00:00 +00:00 (UTC)");
         assertThat(rows.get(0).variables()).isEqualTo("—");
+        assertThat(rows.get(0).id()).isEqualTo("report~cron");
+        // Each id opens the schedule's own page, relative to the definition's, whichever console.
+        assertThat(rows.get(2).link()).isEqualTo("<a href=\"../schedules/" + fileEntryId + "\">" + fileEntryId + "</a>");
+        assertThat(rows.get(2).status().message()).isEqualTo("Paused");
+        assertThat(rows.get(1).status().message()).isEqualTo("Active");
     }
 
     @Test

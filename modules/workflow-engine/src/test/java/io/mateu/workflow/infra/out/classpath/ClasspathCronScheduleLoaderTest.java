@@ -23,7 +23,7 @@ class ClasspathCronScheduleLoaderTest {
     private final WorkflowDefinitionRepository definitions = mock(WorkflowDefinitionRepository.class);
     private final InMemoryCronScheduleRepository schedules = new InMemoryCronScheduleRepository();
     private final ClasspathCronScheduleLoader loader =
-            new ClasspathCronScheduleLoader(new CronScheduleImporter(definitions, schedules));
+            new ClasspathCronScheduleLoader(new CronScheduleImporter(definitions, schedules, new io.mateu.workflow.infra.out.memory.InMemorySchedulePauseRepository()));
 
     {
         when(definitions.findById(anyString())).thenReturn(Optional.empty());

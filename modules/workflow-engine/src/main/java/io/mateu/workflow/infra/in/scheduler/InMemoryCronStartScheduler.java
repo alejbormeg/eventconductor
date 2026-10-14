@@ -31,6 +31,7 @@ public class InMemoryCronStartScheduler {
 
     final WorkflowDefinitionRepository workflowDefinitionRepository;
     final io.mateu.workflow.application.out.CronScheduleRepository cronScheduleRepository;
+    final io.mateu.workflow.application.out.SchedulePauseRepository schedulePauseRepository;
     final IngressRouter ingressRouter;
 
     @org.springframework.beans.factory.annotation.Value("${workflow.cron-scan-interval-ms:10000}")
@@ -62,7 +63,7 @@ public class InMemoryCronStartScheduler {
 
     private void scan() {
         try {
-            CronStarts.fireDue(workflowDefinitionRepository, cronScheduleRepository, ingressRouter::route,
+            CronStarts.fireDue(workflowDefinitionRepository, cronScheduleRepository, schedulePauseRepository, ingressRouter::route,
                     lastFireTimes, Instant.now());
         } catch (Throwable e) {
             log.error("Error checking cron process starts", e);

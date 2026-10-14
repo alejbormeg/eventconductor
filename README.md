@@ -169,6 +169,11 @@ and the final answer is returned as plain text or streamed via SSE.
 | `getWorkflowAnalytics` | Per-definition analytics: instance counts, rates, durations, per-step stats |
 | `findBottleneck` | Find where processes get stuck: slowest step, waiting/running steps, failures |
 | `importWorkflowDefinitionsFromGit` | Pull and upsert workflow JSON files from Git |
+| `listWorkflowDefinitions` | The definitions (id, name, status, whether they accept instances) — what a schedule can start |
+| `listSchedules` / `getSchedule` | Every schedule (optionally of one workflow) with its source, status and next starts |
+| `createSchedule` / `updateSchedule` / `deleteSchedule` | Manage the schedules created through the engine (file-owned ones are changed in their file) |
+| `pauseSchedule` / `resumeSchedule` / `runScheduleNow` | Operate any schedule |
+| `exportScheduleYaml` | The schedule's `cron.yaml` entry, to promote it to git |
 
 **Forms engine** (`forms-engine`, port 8106)
 
@@ -611,7 +616,7 @@ Besides `id`, `name`, `version`, `description`, `status` and the concurrency set
 | Field | Type | Default | Description |
 |---|---|---|---|
 | `cronExpression` | string (Spring cron, 6 fields) | — | While the definition is ACTIVE, a process instance is created automatically at each occurrence (shorthand for one schedule without variables) |
-| `schedules` | list of `{cron, zone?, variables?}` | — | Scheduled starts with their own zone and initial variables — see [Scheduled starts](#scheduled-starts-cron) |
+| `schedules` | list of `{id?, cron, zone?, variables?}` | — | Scheduled starts with their own zone and initial variables — see [Scheduled starts](#scheduled-starts-cron) |
 | `defaultMaxStepExecutions` | integer | `0` | Default cap on successful executions per step within one process instance; a step's `maxSuccessfulExecutions` overrides it; `0` = unbounded |
 
 ### Scheduled starts (cron)
@@ -625,7 +630,8 @@ id: daily-report
 name: Daily report
 cronExpression: "0 0 3 * * *"        # still works: one schedule, no variables, JVM zone
 schedules:
-  - cron: "0 0 9 * * MON-FRI"
+  - id: daily-report-emea             # optional: the schedule's name (see below)
+    cron: "0 0 9 * * MON-FRI"
     zone: Europe/Madrid               # default: workflow.time.zone (the JVM zone unless set)
     variables:
       region: EMEA
@@ -645,7 +651,8 @@ holding the list is accepted as well):
 ```yaml
 # workflows/cron.yaml
 # yaml-language-server: $schema=https://raw.githubusercontent.com/miguelperezcolom/eventconductor/main/modules/workflow-engine/src/main/resources/cron-schema.json
-- cron: "0 0 18 * * MON-FRI"
+- id: daily-report-latam             # optional, one schedule per id
+  cron: "0 0 18 * * MON-FRI"
   workflow: daily-report              # the definition id
   zone: Europe/Madrid
   variables:
@@ -659,11 +666,17 @@ How it behaves:
 - **Only ACTIVE definitions fire**; a disabled or archived one stops every schedule targeting it,
   `cron.yaml` entries included. Paused definitions still create instances, born `PAUSED`.
 - **Variables are strings**: numbers and booleans in YAML are read as their text.
+- **One schedule per id.** An `id` (letters, digits, `.`, `_`, `-`) names a schedule across the
+  engine; it is what a pause is kept under and how a `cron.yaml` entry takes over a schedule created
+  from the UI (below). Without one the engine derives it from the workflow and the entry's content
+  (`<workflow>~cron`, `<workflow>~s<hash>`, `<workflow>~f<hash>`) — the same on every import, but a
+  new one when the entry is edited. A second declaration of an id is reported and never fires.
 - **Business keys are deterministic per schedule and occurrence**, so redeliveries and several
-  pods collapse into one instance: `<id>-cron-<local time>` for `cronExpression` (unchanged),
-  `<id>-cron-s<index>-<time with offset>` for `schedules[index]`, and
-  `<id>-cron-f<hash>-<time with offset>` for a `cron.yaml` entry (the hash covers its cron, zone and
-  variables, so the same entry in two sources starts one process).
+  pods collapse into one instance: `<workflow>-cron-<id>-<time with offset>` for a schedule with an
+  `id`, whoever declares it; without one, `<workflow>-cron-<local time>` for `cronExpression`
+  (unchanged), `<workflow>-cron-s<index>-<time with offset>` for `schedules[index]`, and
+  `<workflow>-cron-f<hash>-<time with offset>` for a `cron.yaml` entry (the hash covers its cron, zone
+  and variables, so the same entry in two sources starts one process).
 - **Missed occurrences are skipped, not replayed** — each schedule's clock starts when the
   scheduler does, and editing a schedule starts its clock afresh.
 - **`cron.yaml` is never read as a workflow definition**, by any importer. Each import of a source
@@ -677,7 +690,64 @@ How it behaves:
   workflow not defined in the workflows directory). Both IDE plugins validate `cron.yaml` against
   `cron-schema.json`.
 - The definition detail page has a **Schedules** tab listing every schedule of the workflow —
-  `cronExpression`, `schedules` and `cron.yaml` entries — with its zone, variables and next start.
+  `cronExpression`, `schedules`, `cron.yaml` entries and schedules created from the UI — with its
+  zone, variables, next start and status; each id opens the schedule's own page.
+
+#### Managing schedules: UI, REST API and MCP
+
+Schedules can also be created and operated without touching a file — from **Workflow → Schedules**
+in the admin console (`/_workflow-admin`, and the all-in-one `WorkflowMenu`), the REST API or the
+MCP tools. All three go through the same `ScheduleService`.
+
+| | Declared in a file (definition, `cron.yaml`) | Created from the UI / API / MCP |
+|---|---|---|
+| Consult (workflow, cron in words, zone, variables, source, next starts) | ✅ | ✅ |
+| Pause / resume, run now | ✅ | ✅ |
+| Edit (workflow, cron, zone, variables) / delete | ❌ change the file | ✅ |
+| Export as a `cron.yaml` entry | ✅ | ✅ |
+
+- **Pause** is kept apart from the schedule, by id (table `cron_schedule_pause`), so it survives
+  every re-import of the file that declares the schedule. A paused schedule does not fire; resuming
+  does not replay what fell due meanwhile. A schedule with a derived id that is edited in its file is
+  another schedule, unpaused — give it an `id` to keep its pause across edits.
+- **Run now** starts one process immediately, paused or not, through the same door as an occurrence
+  (the engine acting for itself, `SYSTEM`), under the business key
+  `<workflow>-cron-manual-<id>-<instant>`.
+- Schedules created from the UI/API/MCP are stored by the engine (memory, or the `cron_schedule`
+  table under source `ui` with `jpa`). No import ever touches them — except the hand-over below.
+
+**The lifecycle: create in the UI → try it → promote to git → git owns it.** A file is the optional,
+durable home of a schedule, not a precondition for having one:
+
+1. Create the schedule from the Schedules page (or `POST /workflow/api/schedules`, or the
+   `createSchedule` tool) with an `id`, and let it run; pause it, run it now, edit it until it is right.
+2. Its page shows — and `GET /workflow/api/schedules/{id}/yaml` / `exportScheduleYaml` return —
+   its `cron.yaml` entry, `id` included. Commit it to the definitions repository.
+3. On the next import, **what comes from git overwrites what was set from the UI**, matched by `id`:
+   the stored copy is deleted and the file's entry — its cron, zone, variables and workflow — is the
+   schedule from then on, with git as its source. Its pause, kept by id, carries over. Same id, same
+   business keys: no occurrence fires twice across the hand-over. The same holds for an `id`
+   declared in a definition's `schedules`.
+4. From then on it is read-only in the UI/API/MCP except for pause, resume and run now. **If it
+   stops being in git, it is deleted** — with its pause — like any entry removed from its file; it is
+   not handed back to the UI.
+
+REST API (same optional `X-Api-Key` as the message API; put it behind whatever guards
+`/_workflow-admin`, since a schedule starts its workflow as the engine itself):
+
+| Method and path | |
+|---|---|
+| `GET /workflow/api/schedules?workflowId=&q=` | every schedule (one per id) |
+| `GET /workflow/api/schedules/{id}` | one schedule, with its next five starts |
+| `POST /workflow/api/schedules` | create `{id, workflowId, cron, zone?, variables?}` → `201` |
+| `PUT /workflow/api/schedules/{id}` | edit `{workflowId, cron, zone?, variables?}` (`409` for a file-owned one) |
+| `DELETE /workflow/api/schedules/{id}` | delete (`409` for a file-owned one) |
+| `POST /workflow/api/schedules/{id}/pause` · `/resume` | any schedule |
+| `POST /workflow/api/schedules/{id}/run-now` | `202` with the business key of the started process |
+| `GET /workflow/api/schedules/{id}/yaml` | its `cron.yaml` entry |
+
+A schedule that breaks a rule (unknown or inactive workflow, invalid id, cron or zone, a taken id)
+is answered `400` with every violation in `violations`.
 
 Scanning is tuned with `workflow.cron-scan-interval-ms` (default `10000`) and switched off with
 `workflow.cron-enabled=false`.

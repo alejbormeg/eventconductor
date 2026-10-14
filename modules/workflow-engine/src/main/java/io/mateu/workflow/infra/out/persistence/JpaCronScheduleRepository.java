@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.mateu.workflow.application.out.CronScheduleRepository;
 import io.mateu.workflow.domain.aggregates.CronFileSchedule;
 import io.mateu.workflow.domain.aggregates.CronSchedule;
+import io.mateu.workflow.domain.aggregates.Schedule;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
@@ -13,13 +14,17 @@ import org.springframework.transaction.annotation.Transactional;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-/** {@code cron.yaml} schedules in the database, so every pod's cron scan reads the same set. */
+/**
+ * {@code cron.yaml} and engine-created schedules in the database, so every pod's cron scan reads the
+ * same set.
+ */
 @Service
 @ConditionalOnProperty(name = "workflow.persistence", havingValue = "jpa")
 @RequiredArgsConstructor
@@ -43,6 +48,9 @@ public class JpaCronScheduleRepository implements CronScheduleRepository {
     @Override
     @Transactional
     public void replace(String source, List<CronFileSchedule> schedules) {
+        if (Schedule.API_SOURCE.equals(source)) {
+            throw new IllegalArgumentException("'" + source + "' holds the schedules created through the engine; no import replaces it");
+        }
         repository.deleteBySourceKey(source);
         repository.flush();
         if (schedules == null || schedules.isEmpty()) {
@@ -50,18 +58,43 @@ public class JpaCronScheduleRepository implements CronScheduleRepository {
         }
         repository.saveAll(schedules.stream().map(s -> new CronScheduleEntity(
                 id(source, s.index()), source, s.index(), s.workflowId(), s.schedule().cron(),
-                s.schedule().zone(), variablesToJson(s.schedule().variables()))).toList());
+                s.schedule().zone(), variablesToJson(s.schedule().variables()), s.schedule().id())).toList());
+    }
+
+    /** Keyed by the schedule's id, so saving it again (an edit) overwrites the row. */
+    @Override
+    @Transactional
+    public void save(CronFileSchedule schedule) {
+        var id = schedule.schedule().id();
+        repository.save(new CronScheduleEntity(id(Schedule.API_SOURCE, id), Schedule.API_SOURCE, schedule.index(),
+                schedule.workflowId(), schedule.schedule().cron(), schedule.schedule().zone(),
+                variablesToJson(schedule.schedule().variables()), id));
+    }
+
+    @Override
+    @Transactional
+    public void deleteApiSchedules(Collection<String> scheduleIds) {
+        if (scheduleIds == null || scheduleIds.isEmpty()) {
+            return;
+        }
+        repository.deleteBySourceKeyAndScheduleIdIn(Schedule.API_SOURCE, scheduleIds);
     }
 
     private static CronFileSchedule map(CronScheduleEntity row) {
         return new CronFileSchedule(row.getSourceKey(), row.getEntryIndex(), row.getWorkflowId(),
-                new CronSchedule(row.getCronExpression(), row.getZoneId(), variablesFromJson(row.getVariablesJson())));
+                new CronSchedule(row.getScheduleId(), row.getCronExpression(), row.getZoneId(),
+                        variablesFromJson(row.getVariablesJson())));
     }
 
     static String id(String source, int index) {
+        return id(source, String.valueOf(index));
+    }
+
+    /** A {@code cron.yaml} row is keyed by its position in its source, an engine-created one by its id. */
+    static String id(String source, String key) {
         try {
             var digest = MessageDigest.getInstance("SHA-256")
-                    .digest((source + "#" + index).getBytes(StandardCharsets.UTF_8));
+                    .digest((source + "#" + key).getBytes(StandardCharsets.UTF_8));
             return HexFormat.of().formatHex(digest);
         } catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException(e);
