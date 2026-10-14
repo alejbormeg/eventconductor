@@ -138,6 +138,11 @@
         "icon": "$(split-horizontal)"
       },
       {
+        "command": "eventconductor.exportSvg",
+        "title": "EventConductor: Export Graph as SVG",
+        "icon": "$(export)"
+      },
+      {
         "command": "eventconductor.form.openAsText",
         "title": "EventConductor: Open Form as Text (YAML/JSON)"
       },
@@ -164,6 +169,12 @@
       }
     ],
     "menus": {
+      "commandPalette": [
+        {
+          "command": "eventconductor.exportSvg",
+          "when": "activeCustomEditorId == eventconductor.graphEditor"
+        }
+      ],
       "explorer/context": [
         {
           "command": "eventconductor.createTaskModule",
@@ -208,6 +219,11 @@
           "command": "eventconductor.openAsText",
           "when": "activeCustomEditorId == eventconductor.graphEditor",
           "group": "navigation@2"
+        },
+        {
+          "command": "eventconductor.exportSvg",
+          "when": "activeCustomEditorId == eventconductor.graphEditor",
+          "group": "navigation@3"
         },
         {
           "command": "eventconductor.form.showTextBeside",

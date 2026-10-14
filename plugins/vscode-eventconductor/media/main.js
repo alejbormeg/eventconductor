@@ -26,6 +26,10 @@
         // release the guard after the property has been consumed
         setTimeout(() => { applying = false; }, 0);
       }
+    } else if (msg.type === "requestExport") {
+      // The "Export Graph as SVG" command: same path as the graph's own export button, which
+      // ends in the `ec-export-svg` listener below.
+      if (typeof el.requestExport === "function") el.requestExport();
     } else if (msg.type === "parseError") {
       errorBox.textContent = "Could not parse this .ec file: " + msg.message;
       errorBox.style.display = "block";
