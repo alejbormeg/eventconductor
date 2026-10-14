@@ -41,6 +41,20 @@ jobs:
           server-username: MAVEN_USERNAME
           server-password: MAVEN_PASSWORD
 
+      - name: Pin Maven 3.9
+        # The runner image ships Maven 3.10, whose resolver writes maven-metadata-local.xml,
+        # _remote.repositories and .locks into central-publishing's staging directory; Central then
+        # rejects the bundle ("Bundle has content that does NOT have a .pom file"), as v2.24.0 did.
+        # See apache/maven#13388. Drop this once central-publishing-maven-plugin strips those files.
+        run: |
+          MAVEN_VERSION=3.9.11
+          curl -fsSL "https://archive.apache.org/dist/maven/maven-3/${MAVEN_VERSION}/binaries/apache-maven-${MAVEN_VERSION}-bin.tar.gz" \
+            | tar xz -C "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/apache-maven-${MAVEN_VERSION}/bin" >> "$GITHUB_PATH"
+
+      - name: Show Maven version
+        run: mvn -v
+
       - name: Import GPG Key
         uses: crazy-max/ghaction-import-gpg@v6
         with:
