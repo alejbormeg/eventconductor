@@ -52,4 +52,24 @@ class ImportEcFilesTest {
         verify(repository).save(argThat((WorkflowDefinition d) -> "EC JSON".equals(d.name())));
         verify(repository).save(argThat((WorkflowDefinition d) -> "EC YAML".equals(d.name())));
     }
+
+    @Test
+    void importsTheCompoundWorkflowSuffixesFromAClone(@TempDir Path repo) throws Exception {
+        // What a git import walks: a checkout. *.workflow.yaml and *.ec.yaml sit beside .ec files
+        // and, declaring no id, are named by their path without the compound suffix.
+        write(repo, "order.workflow.yaml",
+                "name: Order\nsteps:\n  - id: start\n    type: START\n    name: Start\n");
+        write(repo, "refund.ec.yml",
+                "name: Refund\nsteps:\n  - id: start\n    type: START\n    name: Start\n");
+        write(repo, "flow.ec",
+                "id: flow\nname: Flow\nsteps:\n  - id: start\n    type: START\n    name: Start\n");
+
+        var imported = new ArrayList<String>();
+        var errors = new ArrayList<String>();
+        var importedIds = new LinkedHashSet<String>();
+        useCase.scanAndImport(repo, imported, errors, importedIds);
+
+        assertThat(errors).isEmpty();
+        assertThat(importedIds).containsExactlyInAnyOrder("order", "refund", "flow");
+    }
 }

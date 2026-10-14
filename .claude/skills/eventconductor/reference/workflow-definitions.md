@@ -1,6 +1,9 @@
 # Workflow definitions
 
-A definition is JSON or YAML (`.json`/`.yaml`/`.yml`). In `embedded`+`memory` mode it loads
+A definition is JSON or YAML (`.json`/`.yaml`/`.yml`, or `.ec` holding either). Name it
+`order.workflow.yaml` or `order.ec.yaml` to keep a `.yaml` extension and still have the IDE
+plugins open it as a graph with schema validation; with no `id`, directory/repository import names
+it `order` (the compound suffix is stripped). In `embedded`+`memory` mode it loads
 from `classpath:/workflows/`; in `jpa` mode it can also be imported from Git.
 
 ## Top-level fields

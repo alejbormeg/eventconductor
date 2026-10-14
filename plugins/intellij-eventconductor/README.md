@@ -6,7 +6,8 @@ same document.
 
 ## Features
 
-- **Split editor** for `*.ec`: the text (YAML/JSON) on one side and the EventConductor graph
+- **Split editor** for `*.ec` — and for `*.workflow.yaml` / `*.ec.yaml` (and `.yml`), for those
+  who keep the `.yaml` extension: the text (YAML/JSON) on one side and the EventConductor graph
   (the same web component the app uses, embedded via **JCEF**) on the other. Use the editor's
   **Editor / Split / Preview** toolbar toggles to focus on text, graph, or both.
 - **Two-way sync**: graphical edits update the document and text edits update the graph.
@@ -16,8 +17,11 @@ same document.
   the embedded browser sees it, `Backspace` does the same thing.
 - **`.ec` is JSON *or* YAML**: the format is detected from the file and preserved on graphical
   edits (conversion happens in the embedded page via js-yaml; the Kotlin host only moves text).
-- **Schema validation** for `.ec` against the workflow-definition JSON schema (works for JSON
-  and, with the bundled YAML support, YAML too).
+- **Schema validation** for `.ec` (and the compound suffixes above) against the
+  workflow-definition JSON schema (works for JSON and, with the bundled YAML support, YAML too).
+  `.ec`, `.ecform`, `.ecrule` and `.ectask` are an **EventConductor** file type of their own whose
+  language is YAML — not extra extensions on the YAML file type, which a stale
+  `<removed_mapping ext="ec" type="YAML"/>` in the IDE's `filetypes.xml` could strip on every start.
 
 ## Build & run
 
@@ -28,6 +32,7 @@ cd plugins/intellij-eventconductor
 gradle wrapper           # first time only, creates ./gradlew
 ./gradlew runIde         # launches a sandbox IDE with the plugin
 ./gradlew buildPlugin    # produces build/distributions/*.zip to install
+./gradlew test           # headless platform tests (file types, schema association, validation)
 ```
 
 `processResources` runs the `syncBundle` / `syncSchema` tasks, which copy the current graph

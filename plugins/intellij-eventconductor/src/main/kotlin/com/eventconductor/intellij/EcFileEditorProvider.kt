@@ -11,14 +11,14 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
 
 /**
- * Opens `.ec` files in a split editor: the text (YAML/JSON) on one side and the interactive
- * EventConductor graph on the other. The toolbar's editor/split/preview toggles give the
+ * Opens workflow files (`.ec`, `*.workflow.yaml`, `*.ec.yaml`, ... — see [EcFiles]) in a split
+ * editor: the text (YAML/JSON) on one side and the interactive EventConductor graph on the other. The toolbar's editor/split/preview toggles give the
  * "edit as text or as graph" experience for free, and both sides share the same document.
  */
 class EcFileEditorProvider : FileEditorProvider, DumbAware {
 
     override fun accept(project: Project, file: VirtualFile): Boolean =
-        file.extension?.equals("ec", ignoreCase = true) == true
+        EcFiles.isWorkflow(file)
 
     override fun createEditor(project: Project, file: VirtualFile): FileEditor {
         val textEditor = TextEditorProvider.getInstance().createEditor(project, file) as TextEditor

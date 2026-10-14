@@ -181,9 +181,13 @@ public class ValidateMojo extends AbstractMojo {
      * once: this one was missing {@code .ec}, {@code .ecform} and {@code .ecrule}, which are what
      * the graph editor and both IDE plugins write, so pointing the validator at a real repository
      * of definitions found nothing and passed.
+     *
+     * <p>The compound workflow suffixes ({@code .workflow.yaml}, {@code .workflow.yml}) would match
+     * through {@code .yaml}/{@code .yml} anyway; they are listed so the two lists stay the same list.
      */
     private static final List<String> DEFINITION_EXTENSIONS =
-            List.of(".ec", ".ecform", ".ecrule", ".ectask", ".json", ".yaml", ".yml");
+            List.of(".workflow.yaml", ".workflow.yml",
+                    ".ec", ".ecform", ".ecrule", ".ectask", ".json", ".yaml", ".yml");
 
     private static boolean isDefinitionFile(Path path) {
         String name = path.getFileName().toString().toLowerCase();

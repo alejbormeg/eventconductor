@@ -47,9 +47,11 @@ public class ClasspathWorkflowDefinitionImporter implements ApplicationRunner {
         var resolver = new PathMatchingResourcePatternResolver();
         try {
             var resources = new java.util.ArrayList<Resource>();
-            resources.addAll(Arrays.asList(resolver.getResources("classpath:/workflows/*.json")));
-            resources.addAll(Arrays.asList(resolver.getResources("classpath:/workflows/*.{yaml,yml}")));
-            resources.addAll(Arrays.asList(resolver.getResources("classpath:/workflows/*.ec")));
+            // .json, .yaml/.yml (which covers order.workflow.yaml and order.ec.yaml) and .ec — the
+            // patterns don't overlap, so nothing is read twice.
+            for (var pattern : DefinitionFileFormat.CLASSPATH_PATTERNS) {
+                resources.addAll(Arrays.asList(resolver.getResources("classpath:/workflows/" + pattern)));
+            }
             // cron.yaml sits next to the definitions but holds schedules (ClasspathCronScheduleLoader).
             resources.removeIf(r -> io.mateu.workflow.analysis.ScheduleRules.isCronFileName(r.getFilename()));
             for (var resource : resources) {

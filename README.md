@@ -426,7 +426,7 @@ public class MyApplication {
 
 - Domain events dispatched synchronously on each repository `save()`.
 - State held in `ConcurrentHashMap` (lost on restart).
-- Workflow definitions loaded from `classpath:/workflows/` at startup (`.json`, `.yaml`, `.yml`).
+- Workflow definitions loaded from `classpath:/workflows/` at startup (`.ec`, `.json`, `.yaml`, `.yml`).
 - Ideal for tests, local development, and embedding in other applications.
 
 ---
@@ -458,7 +458,12 @@ spring.cloud.stream.bindings.consumeWorkerEvent-in-0.group=worker-group
 
 ### File format (`classpath:/workflows/`)
 
-Used in `memory` persistence mode. Each file defines one workflow. Both JSON and YAML are supported (`.json`, `.yaml`, `.yml`).
+Used in `memory` persistence mode. Each file defines one workflow. Both JSON and YAML are supported (`.json`, `.yaml`, `.yml`, and `.ec` — JSON or YAML, sniffed from the content).
+
+A workflow file may say what it is in its name: `order.workflow.yaml` or `order.ec.yaml` (and the
+`.yml` twins) are ordinary YAML files that the IDE plugins also open as workflow graphs and validate
+against the workflow schema. The compound suffix is not part of the name: a file that declares no
+`id` (directory or repository import) gets `order` from either, as `order.ec` would.
 
 **YAML** (recommended for readability):
 
@@ -718,7 +723,8 @@ parseability for rules.
 
 The `validate` goal binds to `process-resources` and scans `src/main/resources/{workflows,forms,rules}`
 for `*.ec`, `*.ecform`, `*.ecrule`, `*.json`, `*.yaml` and `*.yml` — the same six extensions the
-engine imports, and the same layout it loads from the classpath. Run
+engine imports (a workflow may also be named `*.workflow.yaml` or `*.ec.yaml`, which are `.yaml`
+files to every tool), and the same layout it loads from the classpath. Run
 it in the build (`mvn verify`) or on demand with `mvn eventconductor:validate`; on a violation
 it fails with a per-file report. Directories, per-type toggles, `failOnError`, `failOnMissing`
 and `skip` are configurable — see the
