@@ -82,6 +82,22 @@ class ValidateMojoTest {
     }
 
     @Test
+    void cronYamlIsValidatedAsSchedulesAndItsWorkflowsCrossChecked() throws Exception {
+        assertThatThrownBy(() -> mojo("cron-invalid").execute())
+                .isInstanceOf(MojoFailureException.class)
+                // the definition's own schedule
+                .hasMessageContaining("schedules[0]: 'Nowhere/Land' is not a valid time zone")
+                // cron.yaml, by entry
+                .hasMessageContaining("entry 1: '0 9 * * *' is not a valid cron expression")
+                .hasMessageContaining("entry 2: unknown workflow 'ghost'")
+                .hasMessageContaining("entry 3: 'Mars/Olympus' is not a valid time zone")
+                .hasMessageContaining("varaibles")
+                // entry 0 names the derived id "report" and is fine; cron.yaml is not a definition
+                .hasMessageNotContaining("entry 0")
+                .hasMessageNotContaining("'name'");
+    }
+
+    @Test
     void joinOnGuardedBranchWarnsWithoutFailingTheBuild() throws Exception {
         var warnings = new java.util.ArrayList<String>();
         ValidateMojo mojo = mojo("valid");

@@ -159,6 +159,16 @@
       ],
       "description": "Spring cron expression (six fields, seconds first, e.g. \"0 0 9 * * MON-FRI\"). While the definition is ACTIVE, the engine automatically creates a process instance at each occurrence. Null means no scheduled starts."
     },
+    "schedules": {
+      "type": [
+        "array",
+        "null"
+      ],
+      "description": "Scheduled starts, each with its own cron, optional zone and initial process variables. While the definition is ACTIVE, the engine creates a process instance at each occurrence of each schedule. cronExpression keeps working as the shorthand for one schedule without variables; both may be set. Schedules can also be declared in a cron.yaml file next to the definitions.",
+      "items": {
+        "$ref": "#/$defs/CronSchedule"
+      }
+    },
     "status": {
       "type": [
         "string",
@@ -250,6 +260,43 @@
     }
   },
   "$defs": {
+    "CronSchedule": {
+      "title": "CronSchedule",
+      "type": "object",
+      "description": "One scheduled start: at every occurrence of cron, read in zone, a process instance is created with variables as its initial variables.",
+      "additionalProperties": false,
+      "required": [
+        "cron"
+      ],
+      "properties": {
+        "cron": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Spring cron expression (six fields, seconds first, e.g. \"0 0 9 * * MON-FRI\")."
+        },
+        "zone": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "IANA time zone the expression is read in (e.g. Europe/Madrid). Absent means the engine's workflow.time.zone (the JVM's zone unless configured)."
+        },
+        "variables": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "description": "Initial process variables for each start, by name. Values are strings (numbers and booleans are read as their text).",
+          "additionalProperties": {
+            "type": [
+              "string",
+              "number",
+              "boolean"
+            ]
+          }
+        }
+      }
+    },
     "NodePosition": {
       "title": "NodePosition",
       "type": "object",

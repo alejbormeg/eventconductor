@@ -1,0 +1,4 @@
+# Fixture for ClasspathCronScheduleLoaderTest: the top-level `schedules:` form, as cron.yml.
+schedules:
+  - cron: "@hourly"
+    workflow: daily-report

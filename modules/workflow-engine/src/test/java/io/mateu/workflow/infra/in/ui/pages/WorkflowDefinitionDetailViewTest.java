@@ -30,7 +30,38 @@ class WorkflowDefinitionDetailViewTest {
 
     /** Only the step-execution repository is exercised; the rest go unused. */
     private WorkflowDefinitionDetailView view(StepExecutionRepository stepExecutions) {
-        return new WorkflowDefinitionDetailView(null, stepExecutions, null, null, null, null, null);
+        return new WorkflowDefinitionDetailView(null, stepExecutions, null, null, null, null, null, null);
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void listsEveryScheduleOfTheDefinitionIncludingCronFileEntries() {
+        var cronFiles = new io.mateu.workflow.infra.out.memory.InMemoryCronScheduleRepository();
+        cronFiles.replace("/srv/defs", List.of(
+                new io.mateu.workflow.domain.aggregates.CronFileSchedule("/srv/defs", 0, "report",
+                        new io.mateu.workflow.domain.aggregates.CronSchedule("0 0 18 * * *", "UTC",
+                                java.util.Map.of("region", "AMER"))),
+                new io.mateu.workflow.domain.aggregates.CronFileSchedule("/srv/defs", 1, "other",
+                        new io.mateu.workflow.domain.aggregates.CronSchedule("@daily"))));
+        org.springframework.beans.factory.ObjectProvider<io.mateu.workflow.application.out.CronScheduleRepository> provider =
+                mock(org.springframework.beans.factory.ObjectProvider.class);
+        when(provider.getIfAvailable()).thenReturn(cronFiles);
+        var view = new WorkflowDefinitionDetailView(null, null, null, null, null, null, null, provider);
+        var def = new io.mateu.workflow.domain.aggregates.WorkflowDefinition("report", "Report", 1, null, false, 0,
+                false, "0 0 3 * * *", 0, List.of())
+                .withSchedules(List.of(new io.mateu.workflow.domain.aggregates.CronSchedule("0 0 9 * * MON-FRI",
+                        "Europe/Madrid", new java.util.LinkedHashMap<>(java.util.Map.of("region", "EMEA")))));
+
+        var rows = view.scheduleRows(def, java.time.Instant.parse("2026-10-14T10:00:00Z"));
+
+        assertThat(rows).extracting(ScheduleRow::declaredIn).containsExactly(
+                "cronExpression", "definition (schedules[0])", "cron.yaml (/srv/defs)");
+        assertThat(rows.get(1).zone()).isEqualTo("Europe/Madrid");
+        assertThat(rows.get(1).variables()).isEqualTo("region=EMEA");
+        assertThat(rows.get(1).nextFire()).isEqualTo("2026-10-15 09:00:00 +02:00 (Europe/Madrid)");
+        assertThat(rows.get(2).variables()).isEqualTo("region=AMER");
+        assertThat(rows.get(2).nextFire()).isEqualTo("2026-10-14 18:00:00 +00:00 (UTC)");
+        assertThat(rows.get(0).variables()).isEqualTo("—");
     }
 
     @Test

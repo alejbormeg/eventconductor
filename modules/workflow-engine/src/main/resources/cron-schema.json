@@ -1,0 +1,72 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "urn:eventconductor:cron-schema:1",
+  "title": "EventConductor cron.yaml",
+  "description": "Scheduled workflow starts, in a file named cron.yaml (or cron.yml) next to the workflow definitions. Either a list of schedules, or an object whose only key is schedules holding that list. Each occurrence of each schedule creates a process instance of the named workflow with the given variables, while that workflow is ACTIVE.",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/ScheduleList"
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schedules"
+      ],
+      "properties": {
+        "schedules": {
+          "$ref": "#/$defs/ScheduleList"
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "ScheduleList": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Schedule"
+      }
+    },
+    "Schedule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "cron",
+        "workflow"
+      ],
+      "properties": {
+        "cron": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Spring cron expression (six fields, seconds first, e.g. \"0 0 9 * * MON-FRI\")."
+        },
+        "workflow": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The id of the workflow definition each occurrence starts. An entry naming an unknown workflow is reported and skipped."
+        },
+        "zone": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "IANA time zone the expression is read in (e.g. Europe/Madrid). Absent means the engine's workflow.time.zone (the JVM's zone unless configured)."
+        },
+        "variables": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "description": "Initial process variables for each start, by name. Values are strings (numbers and booleans are read as their text).",
+          "additionalProperties": {
+            "type": [
+              "string",
+              "number",
+              "boolean"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

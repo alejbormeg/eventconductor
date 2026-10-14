@@ -58,9 +58,15 @@ public final class DerivedIds {
      * means one file, not a file called {@code onboarding.yml}. A suffix that is not one of these is
      * part of the name and stays — {@code order.v2.ec} derives {@code order.v2}, because the author
      * put the version there on purpose.
+     *
+     * <p>{@code .workflow.yaml} / {@code .workflow.yml} are one suffix, not {@code .yaml} after a
+     * name ending in {@code .workflow}: {@code order.workflow.yaml} derives {@code order}. They come
+     * first so they are tried before the bare {@code .yaml} would leave {@code order.workflow}
+     * behind. ({@code order.ec.yaml} needs no entry: {@code .yaml} then {@code .ec} strip in turn.)
      */
     private static final List<String> DEFINITION_EXTENSIONS =
-            List.of(".ec", ".ecform", ".ecrule", ".json", ".yaml", ".yml");
+            List.of(".workflow.yaml", ".workflow.yml",
+                    ".ec", ".ecform", ".ecrule", ".json", ".yaml", ".yml");
 
     /**
      * The stable id for a file that declares none: its path relative to the scan root, without the

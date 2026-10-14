@@ -62,6 +62,32 @@ Declare a `cronExpression` on the workflow definition and the engine creates a p
 
 The expression uses Spring cron syntax (six fields, seconds first — `0 0 9 * * MON-FRI` is 09:00 on weekdays). Only `ACTIVE`, non-draft definitions are scheduled. Each occurrence gets a deterministic business key derived from the definition id and the occurrence time, so redeliveries and multiple orchestrator pods never create duplicate instances. Occurrences that pass while no node is running are skipped, not replayed.
 
+### Schedules with parameters
+
+`cronExpression` is the shorthand for one schedule without variables. For several schedules, a zone of their own, or initial variables, use `schedules` (both may coexist):
+
+```yaml
+schedules:
+  - cron: "0 0 9 * * MON-FRI"
+    zone: Europe/Madrid          # IANA zone; default workflow.time.zone (the JVM's zone unless set)
+    variables:
+      region: EMEA               # initial process variables (strings; numbers/booleans read as text)
+  - cron: "0 0 9 * * MON-FRI"
+    zone: America/New_York
+    variables: { region: AMER }
+```
+
+Or put them in a `cron.yaml` next to the definitions — `classpath:/workflows/cron.yaml`, an imported directory or git repository — naming the workflow each entry starts (a bare list, or the list under a single `schedules:` key):
+
+```yaml
+- cron: "0 0 18 * * MON-FRI"
+  workflow: daily-report
+  zone: Europe/Madrid
+  variables: { region: LATAM }
+```
+
+`cron.yaml` is never imported as a definition. Each import of a source replaces that source's entries (a removed entry stops firing); an entry naming an unknown workflow, or with an invalid cron or zone, is logged and skipped. Business keys stay deterministic and distinct per schedule: `<id>-cron-<local time>` for `cronExpression` (as before), `<id>-cron-s<index>-<time with offset>` for `schedules[index]`, `<id>-cron-f<hash>-<time with offset>` for a `cron.yaml` entry. The definition page's **Schedules** tab lists them all with their next start.
+
 Cron scanning can be tuned or disabled with `workflow.cron-scan-interval-ms` and `workflow.cron-enabled` (see the [configuration reference](/reference/configuration/)).
 
 ## Process variables

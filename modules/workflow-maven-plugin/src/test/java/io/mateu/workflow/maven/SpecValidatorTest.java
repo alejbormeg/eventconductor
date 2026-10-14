@@ -30,7 +30,56 @@ class SpecValidatorTest {
     @Test
     void validWorkflowsPass() throws Exception {
         assertThat(validate(SpecValidator.Kind.WORKFLOW, "/valid/workflows/sequential.json")).isEmpty();
-        assertThat(validate(SpecValidator.Kind.WORKFLOW, "/valid/workflows/cron.yaml")).isEmpty();
+        assertThat(validate(SpecValidator.Kind.WORKFLOW, "/valid/workflows/nightly.yaml")).isEmpty();
+    }
+
+    @Test
+    void cronFilesValidateInBothForms() throws Exception {
+        assertThat(validate(SpecValidator.Kind.CRON, "/valid/workflows/cron.yaml")).isEmpty();
+        var keyed = new YAMLMapper().readTree("""
+                schedules:
+                  - cron: "@daily"
+                    workflow: nightly
+                """);
+        assertThat(validator.validate(SpecValidator.Kind.CRON, keyed)).isEmpty();
+        assertThat(SpecValidator.cronEntries(keyed)).hasSize(1);
+    }
+
+    @Test
+    void cronFileEntriesNeedCronAndWorkflowAndValidValues() throws Exception {
+        var doc = new YAMLMapper().readTree("""
+                - workflow: nightly
+                - cron: "0 0 9 * * *"
+                - cron: "61 0 9 * * *"
+                  workflow: nightly
+                  zone: Nowhere/Land
+                  variables: {a: {nested: true}}
+                """);
+        var violations = validator.validate(SpecValidator.Kind.CRON, doc);
+        assertThat(violations).anySatisfy(v -> assertThat(v).contains("cron"))
+                .anySatisfy(v -> assertThat(v).contains("workflow"))
+                .anySatisfy(v -> assertThat(v).contains("entry 2: '61 0 9 * * *' is not a valid cron expression"))
+                .anySatisfy(v -> assertThat(v).contains("entry 2: 'Nowhere/Land' is not a valid time zone"))
+                .anySatisfy(v -> assertThat(v).contains("/2/variables/a"));
+    }
+
+    @Test
+    void definitionSchedulesAreValidated() throws Exception {
+        var doc = new YAMLMapper().readTree("""
+                name: Bad schedules
+                schedules:
+                  - cron: "0 0 9 * * *"
+                    zone: Europe/Madrid
+                  - cron: "0 9 * * *"
+                    variables: {k: v}
+                steps:
+                  - id: start
+                    type: START
+                    name: Start
+                """);
+        assertThat(validator.validate(SpecValidator.Kind.WORKFLOW, doc))
+                .containsExactly("schedules[1]: '0 9 * * *' is not a valid cron expression"
+                        + " (six fields, seconds first, e.g. \"0 0 9 * * MON-FRI\")");
     }
 
     /**

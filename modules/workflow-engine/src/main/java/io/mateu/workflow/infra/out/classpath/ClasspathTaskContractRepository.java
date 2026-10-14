@@ -34,6 +34,14 @@ public class ClasspathTaskContractRepository implements TaskContractRepository {
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final ObjectMapper YAML = new YAMLMapper();
 
+    /**
+     * The files read from {@code classpath:/tasks/}, shared with {@code ClasspathTaskContractImporter}.
+     * One pattern per extension, never {@code *.{yaml,yml}}: Spring's {@code AntPathMatcher} has no
+     * brace alternation and reads {@code {yaml,yml}} as a variable matching any extension, so that
+     * pattern read every {@code .ectask} and {@code .json} contract a second time and tried stray files.
+     */
+    static final List<String> PATTERNS = List.of("*.ectask", "*.json", "*.yaml", "*.yml");
+
     /** id -> (version -> contract), highest version last. */
     private final Map<String, NavigableMap<Integer, TaskContract>> byId = new ConcurrentHashMap<>();
 
@@ -45,9 +53,9 @@ public class ClasspathTaskContractRepository implements TaskContractRepository {
         var resolver = new PathMatchingResourcePatternResolver();
         try {
             var resources = new ArrayList<Resource>();
-            resources.addAll(List.of(resolver.getResources("classpath:/tasks/*.ectask")));
-            resources.addAll(List.of(resolver.getResources("classpath:/tasks/*.json")));
-            resources.addAll(List.of(resolver.getResources("classpath:/tasks/*.{yaml,yml}")));
+            for (var pattern : ClasspathTaskContractRepository.PATTERNS) {
+                resources.addAll(List.of(resolver.getResources("classpath:/tasks/" + pattern)));
+            }
             for (var resource : resources) {
                 try {
                     var filename = resource.getFilename();

@@ -36,6 +36,23 @@ class DerivedIdsTest {
     }
 
     @Test
+    void the_compound_workflow_suffixes_are_one_extension() {
+        var root = Path.of("/repo");
+        // order.workflow.yaml is a workflow called order — not one called order.workflow.
+        assertThat(DerivedIds.forFile(root, Path.of("/repo/order.workflow.yaml"))).isEqualTo("order");
+        assertThat(DerivedIds.forFile(root, Path.of("/repo/order.workflow.yml"))).isEqualTo("order");
+        assertThat(DerivedIds.forFile(root, Path.of("/repo/order.ec.yaml"))).isEqualTo("order");
+        assertThat(DerivedIds.forFile(root, Path.of("/repo/order.ec.yml"))).isEqualTo("order");
+        assertThat(DerivedIds.forFile(root, Path.of("/repo/sagas/order.workflow.yaml")))
+                .isEqualTo("sagas.order");
+        // A file that is only called "workflow" keeps that name, in the root or in a directory.
+        assertThat(DerivedIds.forFile(root, Path.of("/repo/workflow.yaml"))).isEqualTo("workflow");
+        assertThat(DerivedIds.forFile(root, Path.of("/repo/sagas/workflow.yaml"))).isEqualTo("sagas.workflow");
+        // And a version in the name is still part of it.
+        assertThat(DerivedIds.forFile(root, Path.of("/repo/order.v2.workflow.yaml"))).isEqualTo("order.v2");
+    }
+
+    @Test
     void a_suffix_that_is_not_an_extension_is_part_of_the_name() {
         // The author put the version in the file name on purpose; it is part of what identifies it.
         assertThat(DerivedIds.forFile(Path.of("/repo"), Path.of("/repo/order.v2.ec")))

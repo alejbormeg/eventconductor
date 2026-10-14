@@ -35,7 +35,9 @@ public class SpecValidator {
         WORKFLOW("schemas/workflow-definition-schema.json"),
         FORM("schemas/form-schema.json"),
         RULE("schemas/rule-schema.json"),
-        TASK("schemas/task-contract-schema.json");
+        TASK("schemas/task-contract-schema.json"),
+        /** A {@code cron.yaml} / {@code cron.yml} schedule file next to the workflow definitions. */
+        CRON("schemas/cron-schema.json");
 
         final String schemaResource;
 
@@ -48,6 +50,7 @@ public class SpecValidator {
     private final Schema formSchema;
     private final Schema ruleSchema;
     private final Schema taskSchema;
+    private final Schema cronSchema;
     // parse-only engine; expressions are never evaluated during validation.
     private final JexlEngine jexl = new JexlBuilder().create();
 
@@ -56,6 +59,7 @@ public class SpecValidator {
         this.formSchema = loadSchema(Kind.FORM.schemaResource);
         this.ruleSchema = loadSchema(Kind.RULE.schemaResource);
         this.taskSchema = loadSchema(Kind.TASK.schemaResource);
+        this.cronSchema = loadSchema(Kind.CRON.schemaResource);
     }
 
     private static Schema loadSchema(String resource) {
@@ -83,6 +87,10 @@ public class SpecValidator {
                 addRuleSemantics(document, violations);
             }
             case TASK -> addSchemaViolations(taskSchema, document, violations);
+            case CRON -> {
+                addSchemaViolations(cronSchema, document, violations);
+                addCronSemantics(document, violations);
+            }
         }
         return violations;
     }
@@ -140,6 +148,34 @@ public class SpecValidator {
         schema.validate(document.toString(), InputFormat.JSON).forEach(v -> violations.add(v.getInstanceLocation() + ": " + v.getMessage()));
     }
 
+    // --- Schedules: the engine's own ScheduleRules (definition-analysis), not a copy of them. ---
+
+    /**
+     * The entries of a cron file — a bare list, or the list under a single {@code schedules} key —
+     * or an empty list when the document is neither (the schema reports that).
+     */
+    public static List<JsonNode> cronEntries(JsonNode document) {
+        JsonNode list = document != null && document.isObject() ? document.get("schedules") : document;
+        List<JsonNode> entries = new ArrayList<>();
+        if (list != null && list.isArray()) {
+            list.forEach(entries::add);
+        }
+        return entries;
+    }
+
+    private void addCronSemantics(JsonNode document, List<String> violations) {
+        List<JsonNode> entries = cronEntries(document);
+        for (int i = 0; i < entries.size(); i++) {
+            JsonNode entry = entries.get(i);
+            String cron = text(entry, "cron");
+            if (cron == null) {
+                continue; // the schema already reports a missing or non-string cron
+            }
+            violations.addAll(io.mateu.workflow.analysis.ScheduleRules.violations(
+                    cron, text(entry, "zone"), "entry " + i));
+        }
+    }
+
     // --- Workflow semantics: mirror WorkflowDefinition.checkInvariants() + cron validation. ---
 
     private void addWorkflowSemantics(JsonNode wf, List<String> violations) {
@@ -147,6 +183,16 @@ public class SpecValidator {
         if (cron != null && cron.isTextual() && !cron.asText().isBlank()
                 && !CronExpression.isValidExpression(cron.asText().trim())) {
             violations.add("'" + cron.asText() + "' is not a valid cron expression");
+        }
+        JsonNode schedules = wf.get("schedules");
+        if (schedules != null && schedules.isArray()) {
+            for (int i = 0; i < schedules.size(); i++) {
+                String scheduleCron = text(schedules.get(i), "cron");
+                if (scheduleCron != null) {
+                    violations.addAll(io.mateu.workflow.analysis.ScheduleRules.violations(
+                            scheduleCron, text(schedules.get(i), "zone"), "schedules[" + i + "]"));
+                }
+            }
         }
 
         JsonNode steps = wf.get("steps");

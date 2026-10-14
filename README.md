@@ -426,7 +426,7 @@ public class MyApplication {
 
 - Domain events dispatched synchronously on each repository `save()`.
 - State held in `ConcurrentHashMap` (lost on restart).
-- Workflow definitions loaded from `classpath:/workflows/` at startup (`.json`, `.yaml`, `.yml`).
+- Workflow definitions loaded from `classpath:/workflows/` at startup (`.ec`, `.json`, `.yaml`, `.yml`).
 - Ideal for tests, local development, and embedding in other applications.
 
 ---
@@ -458,7 +458,12 @@ spring.cloud.stream.bindings.consumeWorkerEvent-in-0.group=worker-group
 
 ### File format (`classpath:/workflows/`)
 
-Used in `memory` persistence mode. Each file defines one workflow. Both JSON and YAML are supported (`.json`, `.yaml`, `.yml`).
+Used in `memory` persistence mode. Each file defines one workflow. Both JSON and YAML are supported (`.json`, `.yaml`, `.yml`, and `.ec` — JSON or YAML, sniffed from the content).
+
+A workflow file may say what it is in its name: `order.workflow.yaml` or `order.ec.yaml` (and the
+`.yml` twins) are ordinary YAML files that the IDE plugins also open as workflow graphs and validate
+against the workflow schema. The compound suffix is not part of the name: a file that declares no
+`id` (directory or repository import) gets `order` from either, as `order.ec` would.
 
 **YAML** (recommended for readability):
 
@@ -605,8 +610,77 @@ Besides `id`, `name`, `version`, `description`, `status` and the concurrency set
 
 | Field | Type | Default | Description |
 |---|---|---|---|
-| `cronExpression` | string (Spring cron, 6 fields) | — | While the definition is ACTIVE, a process instance is created automatically at each occurrence |
+| `cronExpression` | string (Spring cron, 6 fields) | — | While the definition is ACTIVE, a process instance is created automatically at each occurrence (shorthand for one schedule without variables) |
+| `schedules` | list of `{cron, zone?, variables?}` | — | Scheduled starts with their own zone and initial variables — see [Scheduled starts](#scheduled-starts-cron) |
 | `defaultMaxStepExecutions` | integer | `0` | Default cap on successful executions per step within one process instance; a step's `maxSuccessfulExecutions` overrides it; `0` = unbounded |
+
+### Scheduled starts (cron)
+
+A workflow can start itself on a schedule. Each schedule is a Spring cron expression (six fields,
+seconds first: `0 0 9 * * MON-FRI` is 09:00 on weekdays), an optional IANA `zone` and optional
+initial `variables` for the process it creates. Declare them on the definition:
+
+```yaml
+id: daily-report
+name: Daily report
+cronExpression: "0 0 3 * * *"        # still works: one schedule, no variables, JVM zone
+schedules:
+  - cron: "0 0 9 * * MON-FRI"
+    zone: Europe/Madrid               # default: workflow.time.zone (the JVM zone unless set)
+    variables:
+      region: EMEA
+      format: pdf
+  - cron: "0 0 9 * * MON-FRI"
+    zone: America/New_York
+    variables: { region: AMER }
+steps: [ ... ]
+```
+
+…or keep them out of the definitions, in a **`cron.yaml`** file next to them — the same places
+definitions are loaded from: `classpath:/workflows/cron.yaml`, an imported directory
+(`workflow.import.directories`) or an imported git repository (searched recursively; `cron.yml`
+works too). It is a list of entries naming the workflow they start (a top-level `schedules:` key
+holding the list is accepted as well):
+
+```yaml
+# workflows/cron.yaml
+# yaml-language-server: $schema=https://raw.githubusercontent.com/miguelperezcolom/eventconductor/main/modules/workflow-engine/src/main/resources/cron-schema.json
+- cron: "0 0 18 * * MON-FRI"
+  workflow: daily-report              # the definition id
+  zone: Europe/Madrid
+  variables:
+    region: LATAM
+- cron: "@hourly"
+  workflow: sweep-expired-carts
+```
+
+How it behaves:
+
+- **Only ACTIVE definitions fire**; a disabled or archived one stops every schedule targeting it,
+  `cron.yaml` entries included. Paused definitions still create instances, born `PAUSED`.
+- **Variables are strings**: numbers and booleans in YAML are read as their text.
+- **Business keys are deterministic per schedule and occurrence**, so redeliveries and several
+  pods collapse into one instance: `<id>-cron-<local time>` for `cronExpression` (unchanged),
+  `<id>-cron-s<index>-<time with offset>` for `schedules[index]`, and
+  `<id>-cron-f<hash>-<time with offset>` for a `cron.yaml` entry (the hash covers its cron, zone and
+  variables, so the same entry in two sources starts one process).
+- **Missed occurrences are skipped, not replayed** — each schedule's clock starts when the
+  scheduler does, and editing a schedule starts its clock afresh.
+- **`cron.yaml` is never read as a workflow definition**, by any importer. Each import of a source
+  replaces that source's entries: removing an entry (or the file) stops it. An entry with an invalid
+  cron or zone, an unknown key, or naming a workflow the engine does not know is logged as an error
+  and skipped; the rest still apply. A file that cannot be parsed at all leaves the source's previous
+  schedules in place. With `workflow.persistence=jpa` the entries are stored in the `cron_schedule`
+  table, so every pod's scheduler sees the same set.
+- **Validation**: an invalid `cron` or `zone` in `schedules` rejects the definition on import; the
+  Maven plugin validates both forms at build time (and fails on a `cron.yaml` entry naming a
+  workflow not defined in the workflows directory). Both IDE plugins validate `cron.yaml` against
+  `cron-schema.json`.
+- The definition detail page has a **Schedules** tab listing every schedule of the workflow —
+  `cronExpression`, `schedules` and `cron.yaml` entries — with its zone, variables and next start.
+
+Scanning is tuned with `workflow.cron-scan-interval-ms` (default `10000`) and switched off with
+`workflow.cron-enabled=false`.
 
 ### Workflow definition status
 
@@ -627,7 +701,8 @@ mistakes are caught in the PR instead of at runtime when the engine loads them. 
 the *same* JSON schemas the engine ships (so it can never drift) and adds the semantic checks
 a schema cannot express: duplicate/dangling/self-referencing step ids, the entry-point rule
 (every step without preconditions must be a `START` or `WAIT_FOR_MESSAGE`), precondition-cycle
-detection over the multi-edge graph, the `PROCESS` child-workflow id, cron validity and
+detection over the multi-edge graph, the `PROCESS` child-workflow id, cron and zone validity
+(`cronExpression`, `schedules` and `cron.yaml`, whose entries must name a defined workflow) and
 JEXL parseability of preconditions for workflows; decision-table row arity and JEXL
 parseability for rules.
 
@@ -648,7 +723,8 @@ parseability for rules.
 
 The `validate` goal binds to `process-resources` and scans `src/main/resources/{workflows,forms,rules}`
 for `*.ec`, `*.ecform`, `*.ecrule`, `*.json`, `*.yaml` and `*.yml` — the same six extensions the
-engine imports, and the same layout it loads from the classpath. Run
+engine imports (a workflow may also be named `*.workflow.yaml` or `*.ec.yaml`, which are `.yaml`
+files to every tool), and the same layout it loads from the classpath. Run
 it in the build (`mvn verify`) or on demand with `mvn eventconductor:validate`; on a violation
 it fails with a per-file report. Directories, per-type toggles, `failOnError`, `failOnMissing`
 and `skip` are configurable — see the

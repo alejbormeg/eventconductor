@@ -3,6 +3,7 @@ package io.mateu.workflow.infra.out.classpath;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper;
 import io.mateu.workflow.application.out.WorkflowDefinitionRepository;
+import io.mateu.workflow.application.services.DefinitionFileFormat;
 import io.mateu.workflow.domain.aggregates.Step;
 import io.mateu.workflow.domain.aggregates.WorkflowDefinition;
 import lombok.extern.slf4j.Slf4j;
@@ -21,8 +22,10 @@ import java.util.concurrent.ConcurrentHashMap;
 import static io.mateu.core.infra.JsonSerializer.pojoFromJson;
 
 /**
- * Reads workflow definitions from JSON files located at classpath:/workflows/*.json.
- * Each file must contain a serialized {@link WorkflowDefinition}.
+ * Reads workflow definitions from classpath:/workflows/ — {@code *.json}, {@code *.yaml}/{@code *.yml}
+ * (including {@code *.workflow.yaml} and {@code *.ec.yaml}) and {@code *.ec}; see
+ * {@link DefinitionFileFormat#CLASSPATH_PATTERNS}. Each file must contain a serialized
+ * {@link WorkflowDefinition}.
  * Active when workflow.persistence=memory.
  */
 @Service
@@ -47,18 +50,21 @@ public class ClasspathWorkflowDefinitionRepository implements WorkflowDefinition
     private void loadFromClasspath() {
         var resolver = new PathMatchingResourcePatternResolver();
         try {
-            var jsonResources = resolver.getResources("classpath:/workflows/*.json");
-            var yamlResources = resolver.getResources("classpath:/workflows/*.{yaml,yml}");
+            // The same files the JPA importer reads: .json, .yaml/.yml (order.workflow.yaml and
+            // order.ec.yaml among them) and .ec, whose content is sniffed for JSON or YAML.
             var resources = new java.util.ArrayList<Resource>();
-            resources.addAll(Arrays.asList(jsonResources));
-            resources.addAll(Arrays.asList(yamlResources));
+            for (var pattern : DefinitionFileFormat.CLASSPATH_PATTERNS) {
+                resources.addAll(Arrays.asList(resolver.getResources("classpath:/workflows/" + pattern)));
+            }
+            // cron.yaml sits next to the definitions but holds schedules (ClasspathCronScheduleLoader).
+            resources.removeIf(r -> io.mateu.workflow.analysis.ScheduleRules.isCronFileName(r.getFilename()));
             for (var resource : resources) {
                 try {
                     String filename = resource.getFilename();
-                    boolean isYaml = filename != null && (filename.endsWith(".yaml") || filename.endsWith(".yml"));
-                    WorkflowDefinition def = isYaml
-                            ? YAML_MAPPER.readValue(resource.getInputStream(), WorkflowDefinition.class)
-                            : pojoFromJson(new String(resource.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8), WorkflowDefinition.class);
+                    byte[] bytes = resource.getInputStream().readAllBytes();
+                    WorkflowDefinition def = DefinitionFileFormat.isYaml(filename, bytes)
+                            ? YAML_MAPPER.readValue(bytes, WorkflowDefinition.class)
+                            : pojoFromJson(new String(bytes, java.nio.charset.StandardCharsets.UTF_8), WorkflowDefinition.class);
                     if (def.steps() != null) {
                         final String defId = def.id();
                         List<Step> stepsWithId = def.steps().stream()
@@ -72,7 +78,8 @@ public class ClasspathWorkflowDefinitionRepository implements WorkflowDefinition
                                 .withMaxSteps(def.maxSteps())
                                 .withLayout(def.layout())
                                 .withProcessLock(def.processLock())
-                                .withSyncInvocation(def.syncInvocation());
+                                .withSyncInvocation(def.syncInvocation())
+                                .withSchedules(def.schedules());
                     }
                     def = taskReferenceResolver.resolve(def);
                     definitions.put(def.id(), def);

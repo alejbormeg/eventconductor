@@ -24,6 +24,34 @@ class DefinitionFileFormatTest {
     }
 
     @Test
+    void recognisesTheCompoundWorkflowSuffixes() {
+        assertThat(DefinitionFileFormat.YAML_WORKFLOW_SUFFIXES)
+                .containsExactly(".workflow.yaml", ".workflow.yml", ".ec.yaml", ".ec.yml");
+        for (var suffix : DefinitionFileFormat.YAML_WORKFLOW_SUFFIXES) {
+            assertThat(DefinitionFileFormat.isDefinitionFileName("order" + suffix)).as(suffix).isTrue();
+            assertThat(DefinitionFileFormat.isDefinitionFileName("ORDER" + suffix.toUpperCase())).as(suffix).isTrue();
+        }
+    }
+
+    @Test
+    void theCompoundSuffixesAreAlwaysYaml() {
+        // They end in .yaml/.yml, so the content is never sniffed — even when it is a JSON document
+        // (which YAML reads anyway).
+        assertThat(DefinitionFileFormat.isYaml("order.workflow.yaml", bytes("{\"name\":\"a\"}"))).isTrue();
+        assertThat(DefinitionFileFormat.isYaml("order.workflow.yml", bytes("name: a"))).isTrue();
+        assertThat(DefinitionFileFormat.isYaml("order.ec.yaml", bytes("[1]"))).isTrue();
+        assertThat(DefinitionFileFormat.isYaml("order.ec.yml", bytes("name: a"))).isTrue();
+    }
+
+    @Test
+    void theClasspathPatternsDoNotOverlap() {
+        // *.yaml / *.yml already cover the compound suffixes; a pattern of their own would load each
+        // such file twice. (And no *.{yaml,yml}: AntPathMatcher reads the braces as a variable that
+        // matches any extension — ClasspathDefinitionSuffixesTest catches that.)
+        assertThat(DefinitionFileFormat.CLASSPATH_PATTERNS).containsExactly("*.json", "*.yaml", "*.yml", "*.ec");
+    }
+
+    @Test
     void picksParserByExtensionRegardlessOfContent() {
         assertThat(DefinitionFileFormat.isYaml("x.yaml", bytes("{}"))).isTrue();
         assertThat(DefinitionFileFormat.isYaml("x.yml", bytes("name: a"))).isTrue();

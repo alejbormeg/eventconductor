@@ -51,7 +51,8 @@ public class WorkflowDefinitionDBRepository implements WorkflowDefinitionReposit
         ).withMaxSteps(entity.getMaxSteps())
                 .withLayout(layoutFromJson(entity.getLayoutJson()))
                 .withProcessLock(processLockFromJson(entity.getProcessLockJson()))
-                .withSyncInvocation(syncInvocationFromJson(entity.getSyncInvocationJson()));
+                .withSyncInvocation(syncInvocationFromJson(entity.getSyncInvocationJson()))
+                .withSchedules(schedulesFromJson(entity.getSchedulesJson()));
     }
 
     /** The stored process-level lock, or null when the definition declares none (read leniently). */
@@ -73,6 +74,18 @@ public class WorkflowDefinitionDBRepository implements WorkflowDefinitionReposit
         }
         try {
             return LAYOUT_MAPPER.readValue(json, io.mateu.workflow.domain.aggregates.SyncInvocation.class);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /** The stored scheduled starts, or null when there are none (read leniently, like the lock). */
+    private static List<CronSchedule> schedulesFromJson(String json) {
+        if (json == null || json.isBlank()) {
+            return null;
+        }
+        try {
+            return LAYOUT_MAPPER.readValue(json, new TypeReference<List<CronSchedule>>() {});
         } catch (Exception e) {
             return null;
         }
@@ -129,7 +142,8 @@ public class WorkflowDefinitionDBRepository implements WorkflowDefinitionReposit
                 workflowDefinition.runtimeStatus().name(),
                 layoutToJson(workflowDefinition.layout()),
                 processLockToJson(workflowDefinition.processLock()),
-                workflowDefinition.syncInvocation() == null ? null : toJson(workflowDefinition.syncInvocation())
+                workflowDefinition.syncInvocation() == null ? null : toJson(workflowDefinition.syncInvocation()),
+                workflowDefinition.schedules() == null ? null : toJson(workflowDefinition.schedules())
         ));
         return workflowDefinition.id();
     }

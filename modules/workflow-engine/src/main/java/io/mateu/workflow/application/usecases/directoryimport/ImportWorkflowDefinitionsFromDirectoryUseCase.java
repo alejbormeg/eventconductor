@@ -49,6 +49,25 @@ public class ImportWorkflowDefinitionsFromDirectoryUseCase {
     final ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
     private static final YAMLMapper YAML_MAPPER = new YAMLMapper();
 
+    /**
+     * Imports the {@code cron.yaml} files found beside the definitions. Null only where a caller built
+     * this use case by hand without one (tests of the definition import alone): cron files are then
+     * left alone.
+     */
+    private io.mateu.workflow.application.services.CronScheduleImporter cronScheduleImporter;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public ImportWorkflowDefinitionsFromDirectoryUseCase(DirectoryImportProperties directoryImportProperties,
+                                                         WorkflowDefinitionRepository workflowDefinitionRepository,
+                                                         ImportedDefinitionsRegistry importedDefinitionsRegistry,
+                                                         WorkflowDefinitionValidator workflowDefinitionValidator,
+                                                         io.mateu.workflow.application.services.TaskReferenceResolver taskReferenceResolver,
+                                                         io.mateu.workflow.application.services.CronScheduleImporter cronScheduleImporter) {
+        this(directoryImportProperties, workflowDefinitionRepository, importedDefinitionsRegistry,
+                workflowDefinitionValidator, taskReferenceResolver);
+        this.cronScheduleImporter = cronScheduleImporter;
+    }
+
     /** Re-imports every configured directory. */
     public ImportWorkflowDefinitionsResult handle() {
         return handle(directoryImportProperties.getDirectories());
@@ -90,6 +109,28 @@ public class ImportWorkflowDefinitionsFromDirectoryUseCase {
         var importedIds = new LinkedHashSet<String>();
         scanAndImport(root, imported, errors, importedIds);
         pruneRemovedDefinitions(pruneKey, importedIds, pruned);
+        // After the definitions, so the schedules can be checked against what this import just added.
+        importCronFiles(root, pruneKey, errors);
+    }
+
+    /**
+     * Makes the {@code cron.yaml} files under {@code root} the schedules of this source, replacing
+     * what its previous import recorded — none found clears them, so deleting the file stops them.
+     */
+    void importCronFiles(Path root, String sourceKey, List<String> errors) throws IOException {
+        if (cronScheduleImporter == null) {
+            return;
+        }
+        var files = new ArrayList<io.mateu.workflow.application.services.CronScheduleImporter.CronFile>();
+        try (var stream = Files.walk(root)) {
+            for (var file : stream.filter(Files::isRegularFile)
+                    .filter(f -> io.mateu.workflow.analysis.ScheduleRules.isCronFileName(f.toString()))
+                    .sorted().toList()) {
+                files.add(new io.mateu.workflow.application.services.CronScheduleImporter.CronFile(
+                        root.relativize(file).toString(), Files.readAllBytes(file)));
+            }
+        }
+        errors.addAll(cronScheduleImporter.importSource(sourceKey, files).errors());
     }
 
     private static boolean isDefinitionFile(Path path) {
@@ -162,7 +203,8 @@ public class ImportWorkflowDefinitionsFromDirectoryUseCase {
             ).withMaxSteps(definition.maxSteps())
                     .withLayout(definition.layout())
                     .withProcessLock(definition.processLock())
-                    .withSyncInvocation(definition.syncInvocation());
+                    .withSyncInvocation(definition.syncInvocation())
+                    .withSchedules(definition.schedules());
         }
 
         // What the file says about being disabled or archived is a declaration, not a runtime
@@ -239,7 +281,8 @@ public class ImportWorkflowDefinitionsFromDirectoryUseCase {
                 .withMaxSteps(fromFile.maxSteps())
                 .withLayout(fromFile.layout())
                 .withProcessLock(fromFile.processLock())
-                .withSyncInvocation(fromFile.syncInvocation());
+                .withSyncInvocation(fromFile.syncInvocation())
+                .withSchedules(fromFile.schedules());
     }
 
     /**

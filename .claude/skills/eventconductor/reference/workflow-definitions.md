@@ -1,6 +1,9 @@
 # Workflow definitions
 
-A definition is JSON or YAML (`.json`/`.yaml`/`.yml`). In `embedded`+`memory` mode it loads
+A definition is JSON or YAML (`.json`/`.yaml`/`.yml`, or `.ec` holding either). Name it
+`order.workflow.yaml` or `order.ec.yaml` to keep a `.yaml` extension and still have the IDE
+plugins open it as a graph with schema validation; with no `id`, directory/repository import names
+it `order` (the compound suffix is stripped). In `embedded`+`memory` mode it loads
 from `classpath:/workflows/`; in `jpa` mode it can also be imported from Git.
 
 ## Top-level fields
@@ -12,6 +15,10 @@ new instances, cron included, are created born-`PAUSED`; in the schema, default 
 only so exports round-trip),
 `draftOfId?`, `limitConcurrentExecutions?`, `maxConcurrentExecutions?`, `enqueueOnLimit?`,
 `cronExpression?` (Spring cron: start a new instance per occurrence, multi-pod safe),
+`schedules?` (`[{cron, zone?, variables?: {name: value}}]` — several scheduled starts, each with an
+IANA zone (default `workflow.time.zone`) and initial variables; coexists with `cronExpression`.
+Entries may instead live in `cron.yaml` beside the definitions — `[{cron, workflow, zone?, variables?}]`,
+never read as a definition; unknown `workflow` → logged and skipped),
 `defaultMaxStepExecutions?` (validated metadata, not enforced at runtime today),
 `processLock?` (`{name?, key}` — serialize instances by a JEXL key),
 `syncInvocation?` (`{enabled, onFailure: REPLY_IMMEDIATELY|REPLY_AFTER_COMPENSATION, onLockBusy: WAIT|FAIL, defaultDeadlineMs}` —

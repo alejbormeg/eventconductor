@@ -1,0 +1,23 @@
+id: nightly
+name: Nightly job
+version: 1
+cronExpression: "0 0 3 * * *"
+schedules:
+  - cron: "0 0 15 * * MON-FRI"
+    zone: Europe/Madrid
+    variables:
+      mode: afternoon
+      batch: 50
+steps:
+  - id: start
+    type: START
+    name: Start
+  - id: run
+    type: ACTION
+    name: Run
+    topic: work
+    preconditionStepId: start
+  - id: end
+    type: END
+    name: End
+    preconditionStepId: run

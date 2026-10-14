@@ -5,7 +5,8 @@ plain **YAML/JSON** with schema validation — both views edit the same file.
 
 ## Features
 
-- **Graph editor** (default): opens any `.ec` file as the EventConductor workflow graph.
+- **Graph editor** (default): opens any `.ec` file — or `*.workflow.yaml` / `*.ec.yaml` (and
+  `.yml`), for those who keep the `.yaml` extension — as the EventConductor workflow graph.
   Drag nodes, **Shift+drag** to draw precondition lines, click to filter, zoom/pan/fit,
   minimap, and the animated token simulation — the same component used inside the app.
 - **Delete** (or **Backspace**) removes the selected node or connection. Deleting a node
@@ -16,9 +17,10 @@ plain **YAML/JSON** with schema validation — both views edit the same file.
   or command palette) to edit the YAML/JSON directly, and **Open as Graph** to go back.
 - **`.ec` is JSON *or* YAML**: the format is detected from the file's content and preserved
   on graphical edits.
-- **Schema validation**: `.ec` files are validated against the workflow-definition JSON
-  schema (JSON bodies out of the box; for YAML install *YAML* by Red Hat and point
-  `yaml.schemas` at `./schema/ec.schema.json`).
+- **Schema validation**: workflow files (`.ec`, `*.workflow.yaml`, `*.ec.yaml`) are validated
+  against the workflow-definition JSON schema, and `.ecform` / `.ecrule` / `.ectask` against
+  theirs, through *YAML* by Red Hat (installed with this extension): the schemas are contributed
+  with `yamlValidation`, so no `yaml.schemas` setting is needed.
 
 ## Develop
 

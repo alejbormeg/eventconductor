@@ -24,6 +24,17 @@
     </properties>
 
     <dependencies>
+        <!--
+          CronExpression only, for ScheduleRules: a cron schedule is valid exactly when Spring's
+          parser accepts it, because that is what the engine fires it with. Optional, so this module
+          still brings nothing with it: both of its users (the engine and the Maven plugin) already
+          have spring-context on their classpath.
+        -->
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-context</artifactId>
+            <optional>true</optional>
+        </dependency>
         <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter</artifactId>

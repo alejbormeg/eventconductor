@@ -1,4 +1,5 @@
 import org.jetbrains.intellij.platform.gradle.IntelliJPlatformType
+import org.jetbrains.intellij.platform.gradle.TestFrameworkType
 
 plugins {
     id("java")
@@ -7,7 +8,7 @@ plugins {
 }
 
 group = "com.eventconductor"
-version = "0.1.23"
+version = "0.1.24"
 
 repositories {
     mavenCentral()
@@ -28,6 +29,8 @@ dependencies {
         bundledModule("com.intellij.modules.json")
         // YAML support so .ec (parsed as YAML) gets highlighting + schema validation.
         bundledPlugin("org.jetbrains.plugins.yaml")
+        // Headless platform tests (`./gradlew test`): file types, schema association, validation.
+        testFramework(TestFrameworkType.Platform)
     }
     // The single source of task-worker project templates and source generation. Resolved from the
     // local Maven repository (built with `mvn install` in the repo root); it brings jackson-databind
@@ -37,6 +40,10 @@ dependencies {
     // classpath at runtime; compileOnly lets the actions parse a YAML .ectask without shipping a
     // second copy.
     compileOnly("org.yaml:snakeyaml:2.2")
+
+    // The platform test framework is JUnit 4 based (BasePlatformTestCase) and needs opentest4j.
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.opentest4j:opentest4j:1.3.0")
 }
 
 intellijPlatform {
@@ -94,6 +101,9 @@ val syncSchema by tasks.registering(Copy::class) {
     val repo = rootProject.projectDir.resolve("../..")
     from(repo.resolve("modules/workflow-engine/src/main/resources/workflow-definition-schema.json")) {
         rename { "ec.schema.json" }
+    }
+    from(repo.resolve("modules/workflow-engine/src/main/resources/cron-schema.json")) {
+        rename { "cron.schema.json" }
     }
 
     from(repo.resolve("modules/rule-engine/src/main/resources/rule-schema.json")) {

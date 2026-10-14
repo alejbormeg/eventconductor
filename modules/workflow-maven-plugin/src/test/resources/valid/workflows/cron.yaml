@@ -1,17 +1,10 @@
-id: nightly
-name: Nightly job
-version: 1
-cronExpression: "0 0 3 * * *"
-steps:
-  - id: start
-    type: START
-    name: Start
-  - id: run
-    type: ACTION
-    name: Run
-    topic: work
-    preconditionStepId: start
-  - id: end
-    type: END
-    name: End
-    preconditionStepId: run
+# A schedule file, not a definition: validated against cron-schema.json, and every entry must
+# name a workflow defined in this directory (by declared id, or the id derived from its path).
+- cron: "0 30 6 * * *"
+  workflow: nightly
+  zone: UTC
+  variables:
+    mode: early
+    dryRun: true
+- cron: "@weekly"
+  workflow: seq

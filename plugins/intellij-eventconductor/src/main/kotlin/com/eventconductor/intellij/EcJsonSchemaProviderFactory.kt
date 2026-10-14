@@ -6,7 +6,10 @@ import com.jetbrains.jsonSchema.extension.JsonSchemaFileProvider
 import com.jetbrains.jsonSchema.extension.JsonSchemaProviderFactory
 import com.jetbrains.jsonSchema.extension.SchemaType
 
-/** Associates the bundled workflow-definition JSON schema with every `.ec` file (JSON or YAML). */
+/**
+ * Associates the bundled workflow-definition JSON schema with every workflow file — `.ec` (JSON or
+ * YAML), `*.workflow.yaml` / `*.ec.yaml` and their `.yml` twins (see [EcFiles]).
+ */
 class EcJsonSchemaProviderFactory : JsonSchemaProviderFactory {
     override fun getProviders(project: Project): List<JsonSchemaFileProvider> = listOf(EcSchemaProvider())
 }
@@ -14,7 +17,7 @@ class EcJsonSchemaProviderFactory : JsonSchemaProviderFactory {
 class EcSchemaProvider : JsonSchemaFileProvider {
 
     override fun isAvailable(file: VirtualFile): Boolean =
-        file.extension?.equals("ec", ignoreCase = true) == true
+        EcFiles.isWorkflow(file)
 
     override fun getName(): String = "EventConductor"
 

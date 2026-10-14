@@ -71,6 +71,8 @@ public class WorkflowDefinitionDetailView implements VisibilitySupplier {
     final ResumeWorkflowUseCase resumeWorkflowUseCase;
     /** JPA-only: absent in memory mode, which is why the "Versions" tab is then hidden. */
     final ObjectProvider<WorkflowDefinitionVersionQueryService> versionQueryProvider;
+    /** The cron.yaml schedules, so the ones targeting this definition are listed with its own. */
+    final ObjectProvider<io.mateu.workflow.application.out.CronScheduleRepository> cronScheduleRepositoryProvider;
 
     @Hidden
     String id;
@@ -130,6 +132,16 @@ public class WorkflowDefinitionDetailView implements VisibilitySupplier {
     @Label("Paused")
     String paused;
 
+    // ── "Schedules" tab: every scheduled start of this definition — its cronExpression, its own
+    //    schedules and the cron.yaml entries that target it — with zone, variables and next start.
+    //    Hidden when there is none. ─────────────────────────────────────────────────────────────────
+    @Tab("Schedules")
+    @Label("")
+    List<ScheduleRow> schedules;
+
+    @Hidden
+    boolean schedulesAvailable;
+
     // ── "Versions" tab: the engine-recorded version history of this definition, one row per version
     //    with its creation date and per-version process stats (running/completed/total), plus a
     //    legacy bucket. JPA-only; hidden in memory mode (see isHidden). ─────────────────────────────
@@ -157,6 +169,11 @@ public class WorkflowDefinitionDetailView implements VisibilitySupplier {
                 : "unlimited";
         this.cron = def.cronExpression() == null || def.cronExpression().isBlank()
                 ? "—" : def.cronExpression();
+        this.schedules = scheduleRows(def, java.time.Instant.now());
+        this.schedulesAvailable = !schedules.isEmpty();
+        if (schedulesAvailable && "—".equals(cron)) {
+            this.cron = schedules.size() + " schedule(s) — see the Schedules tab";
+        }
         this.maxStepExecutions = def.defaultMaxStepExecutions() == 0
                 ? "unbounded" : String.valueOf(def.defaultMaxStepExecutions());
         this.paused = def.paused() ? "yes — processes are held" : "no";
@@ -198,6 +215,32 @@ public class WorkflowDefinitionDetailView implements VisibilitySupplier {
             this.versions = versionQuery.rows(id);
         }
         return this;
+    }
+
+    /** Every scheduled start of {@code def}, in the order the scheduler considers them. */
+    List<ScheduleRow> scheduleRows(io.mateu.workflow.domain.aggregates.WorkflowDefinition def, java.time.Instant now) {
+        var rows = new java.util.ArrayList<ScheduleRow>();
+        if (def.cronExpression() != null && !def.cronExpression().isBlank()) {
+            // The shorthand is read in the JVM's zone, as it always has been, whatever workflow.time.zone says.
+            var jvmZone = java.time.ZoneId.systemDefault().getId();
+            var legacy = new io.mateu.workflow.domain.aggregates.CronSchedule(def.cronExpression(), jvmZone, null);
+            var row = ScheduleRow.of("cronExpression", "cronExpression", legacy, jvmZone, now);
+            rows.add(new ScheduleRow(row.id(), row.declaredIn(), row.cron(), jvmZone + " (JVM)", row.variables(),
+                    row.nextFire()));
+        }
+        var own = def.schedules() == null ? List.<io.mateu.workflow.domain.aggregates.CronSchedule>of() : def.schedules();
+        for (int i = 0; i < own.size(); i++) {
+            rows.add(ScheduleRow.of("s" + i, "definition (schedules[" + i + "])", own.get(i), ScheduleRow.defaultZone(), now));
+        }
+        var cronFiles = cronScheduleRepositoryProvider == null ? null : cronScheduleRepositoryProvider.getIfAvailable();
+        if (cronFiles != null) {
+            for (var fileSchedule : cronFiles.findByWorkflowId(def.id())) {
+                rows.add(ScheduleRow.of("f" + fileSchedule.source() + "#" + fileSchedule.index(),
+                        "cron.yaml (" + fileSchedule.source() + ")", fileSchedule.schedule(),
+                        ScheduleRow.defaultZone(), now));
+            }
+        }
+        return rows;
     }
 
     /**
@@ -271,6 +314,7 @@ public class WorkflowDefinitionDetailView implements VisibilitySupplier {
             case "resume" -> !definitionPaused;
             // No version history in memory mode — hide the tab rather than show it empty.
             case "versions" -> !versionsAvailable;
+            case "schedules" -> !schedulesAvailable;
             default -> false;
         };
     }

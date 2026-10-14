@@ -20,6 +20,10 @@ const assets = [
     to: path.join(root, "schema/ec.schema.json"),
   },
   {
+    from: path.join(repo, "modules/workflow-engine/src/main/resources/cron-schema.json"),
+    to: path.join(root, "schema/cron.schema.json"),
+  },
+  {
     from: path.join(repo, "modules/rule-engine/src/main/resources/rule-schema.json"),
     to: path.join(root, "schema/rule.schema.json"),
   },

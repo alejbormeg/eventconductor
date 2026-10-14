@@ -212,6 +212,32 @@ class ImportWorkflowDefinitionsFromDirectoryTest {
     }
 
     @Test
+    void theCompoundWorkflowSuffixesAreImportedAndStrippedFromTheDerivedId(@TempDir Path dir) throws Exception {
+        writeWithoutId(dir, "order.workflow.yaml", "Order");
+        writeWithoutId(dir, "invoice.workflow.yml", "Invoice");
+        writeWithoutId(dir, "refund.ec.yaml", "Refund");
+        writeWithoutId(dir, "payment.ec.yml", "Payment");
+        Files.createDirectories(dir.resolve("sagas"));
+        writeWithoutId(dir.resolve("sagas"), "onboarding.workflow.yaml", "Onboarding");
+
+        var result = useCase.handle(List.of(dir.toString()));
+
+        // order.workflow.yaml is the workflow "order", not "order.workflow"; each file once.
+        assertThat(result.errors()).isEmpty();
+        assertThat(saved()).extracting(WorkflowDefinition::id)
+                .containsExactlyInAnyOrder("order", "invoice", "refund", "payment", "sagas.onboarding");
+    }
+
+    @Test
+    void aCompoundSuffixFileWithAnExplicitIdKeepsIt(@TempDir Path dir) throws Exception {
+        write(dir, "order.workflow.yaml", "order-v2");
+
+        useCase.handle(List.of(dir.toString()));
+
+        assertThat(saved()).extracting(WorkflowDefinition::id).containsExactly("order-v2");
+    }
+
+    @Test
     void aFileWithNoIdIsPrunedWhenItGoesAway(@TempDir Path dir) throws Exception {
         writeWithoutId(dir, "nameless.ec", "Nameless");
         useCase.handle(List.of(dir.toString()));

@@ -300,6 +300,33 @@ const EXPORT_PAINT_PROPS = [
     "filter", "marker-start", "marker-mid", "marker-end",
 ];
 
+/** A node shows this many characters of its name; the hover card has the rest. */
+const NODE_LABEL_CHARS = 22;
+/** …and this many of the caption above a task card. */
+const NODE_BADGE_CHARS = 26;
+
+/**
+ * Classes that say what the pointer is doing rather than what the graph is: selection, the
+ * drop-target and source of a line being drawn, the token animation's transient dim / active /
+ * failure shake, and the sticky focus dimming. The export takes them off before reading styles.
+ */
+const EXPORT_STRIP_CLASSES = ["sel", "link-source", "link-target", "dim", "active", "err", "focus-dim"];
+
+/**
+ * A computed colour as every SVG viewer reads it. Chromium serialises a resolved color-mix() as
+ * {@code color(srgb r g b / a)}, which browsers understand and Inkscape, librsvg and most office
+ * suites do not; rgb()/rgba() they all do.
+ */
+function plainColours(v: string): string {
+    return v.replace(/color\(srgb\s+([\d.e+-]+)\s+([\d.e+-]+)\s+([\d.e+-]+)(?:\s*\/\s*([\d.e+-]+%?))?\s*\)/g,
+        (_m, r, g, b, a) => {
+            const c = (x: string) => Math.round(Math.max(0, Math.min(1, Number(x))) * 255);
+            if (a === undefined) return `rgb(${c(r)}, ${c(g)}, ${c(b)})`;
+            const alpha = a.endsWith("%") ? Number(a.slice(0, -1)) / 100 : Number(a);
+            return alpha >= 1 ? `rgb(${c(r)}, ${c(g)}, ${c(b)})` : `rgba(${c(r)}, ${c(g)}, ${c(b)}, ${+alpha.toFixed(3)})`;
+        });
+}
+
 const DEFAULT_STYLE: NodeStyle = {fill: "#ffffff", stroke: "#94a3b8", symbol: "process"};
 const styleOf = (t: StepType): NodeStyle => NODE_STYLE[t] ?? DEFAULT_STYLE;
 
@@ -1889,6 +1916,12 @@ export class MateuWorkflowElk extends LitElement {
      * root and leans on custom properties the host page supplies; neither of those survives the
      * file being opened anywhere else, and a drawing whose colours depend on where it is opened is
      * not an export.
+     *
+     * <p><b>Only what the graph is, not what the pointer is doing to it.</b> Selection, the
+     * link-drawing highlights, the token animation's dimming and the focus dimming are stripped
+     * before the styles are read, transitions and animations are switched off while they are (or
+     * the read would catch a colour half way through changing), and hover cards, native tooltips,
+     * hit targets and the full-length guard overlays are left out of the file.
      */
     exportSvg(): string {
         const src = this.svgEl;
@@ -1897,6 +1930,18 @@ export class MateuWorkflowElk extends LitElement {
 
         const wasDark = this.hasAttribute("dark");
         if (wasDark) this.removeAttribute("dark");
+        this.setAttribute("exporting", "");
+        // Interactive classes come off for the read and go back on afterwards. Lit never sees it:
+        // nothing between here and the finally block yields to a render.
+        const stripped: [Element, string][] = [];
+        for (const el of Array.from(src.querySelectorAll<SVGElement>("*"))) {
+            for (const c of EXPORT_STRIP_CLASSES) {
+                if (el.classList.contains(c)) {
+                    el.classList.remove(c);
+                    stripped.push([el, c]);
+                }
+            }
+        }
         let out: string;
         try {
             const clone = src.cloneNode(true) as SVGSVGElement;
@@ -1909,15 +1954,32 @@ export class MateuWorkflowElk extends LitElement {
                 let inline = "";
                 for (const prop of EXPORT_PAINT_PROPS) {
                     const v = cs.getPropertyValue(prop);
-                    if (v) inline += `${prop}:${v};`;
+                    if (v) inline += `${prop}:${plainColours(v)};`;
                 }
+                // Only a hidden element needs its display spelled out; everything else displays.
+                if (cs.display === "none") inline += "display:none;";
                 if (inline) to[i].setAttribute("style", inline);
+                // text-transform is CSS, not SVG: viewers outside a browser ignore it, so the
+                // uppercase caption is written in uppercase instead.
+                if (cs.textTransform === "uppercase" && to[i].localName === "text") {
+                    to[i].textContent = (to[i].textContent ?? "").toUpperCase();
+                }
             }
 
             // Anything that only means something while the graph is live on screen: a token
-            // mid-flight, a link being dragged, the panning cursor.
-            clone.querySelectorAll(".flow-token, .link-draft").forEach(n => n.remove());
+            // mid-flight and the pings it leaves, a link being dragged, the invisible hit targets
+            // laid over the edges, a chip's hover glow and its full-length hover form, and the
+            // native tooltips — a file is not hovered.
+            clone.querySelectorAll(
+                ".flow-token, .flow-pulse, .link-draft, .edge-hit, .guard-halo, .guard-full, title"
+            ).forEach(n => n.remove());
+            // Lit's part markers, and the classes — the stylesheet they pointed at is not coming.
+            const comments: Node[] = [];
+            const walker = document.createTreeWalker(clone, NodeFilter.SHOW_COMMENT);
+            while (walker.nextNode()) comments.push(walker.currentNode);
+            comments.forEach(n => n.parentNode?.removeChild(n));
             clone.removeAttribute("class");
+            clone.querySelectorAll("[class]").forEach(n => n.removeAttribute("class"));
 
             // The viewBox is the graph's own bounds, so the export is the whole graph rather than
             // whatever happened to be framed when the button was pressed.
@@ -1941,9 +2003,20 @@ export class MateuWorkflowElk extends LitElement {
 
             out = '<?xml version="1.0" encoding="UTF-8"?>\n' + new XMLSerializer().serializeToString(clone);
         } finally {
+            for (const [el, c] of stripped) el.classList.add(c);
+            this.removeAttribute("exporting");
             if (wasDark) this.setAttribute("dark", "");
         }
         return out;
+    }
+
+    /**
+     * Export the graph: hand it to the host through the cancelable {@code ec-export-svg} event,
+     * or, when no host takes it, download it. For a host's own "Export" command — the same path
+     * the toolbar button takes.
+     */
+    requestExport(): void {
+        this.exportGraph();
     }
 
     /** Filename for an export: the definition's own id, or its name, or a last resort. */
@@ -3138,7 +3211,7 @@ export class MateuWorkflowElk extends LitElement {
         const st = styleOf(step.type);
         const {w, h} = sizeOf(step.type);
         const sel = this.selectedId === step.id ? "sel" : "";
-        const label = step.name.length > 22 ? step.name.slice(0, 21) + "…" : step.name;
+        const label = step.name.length > NODE_LABEL_CHARS ? step.name.slice(0, NODE_LABEL_CHARS - 1) + "…" : step.name;
 
         // A radar-ping ring that flashes when a flow token arrives (driven by the rAF loop).
         const pulse = svg`<circle class="flow-pulse" data-pulse="${step.id}"
@@ -3168,7 +3241,7 @@ export class MateuWorkflowElk extends LitElement {
         } else {
             // BPMN task: rounded card with a corner glyph, an uppercase caption, title + id.
             const badge = badgeOf(step);
-            const badgeText = badge.length > 26 ? badge.slice(0, 25) + "…" : badge;
+            const badgeText = badge.length > NODE_BADGE_CHARS ? badge.slice(0, NODE_BADGE_CHARS - 1) + "…" : badge;
             shape = svg`
                 <text class="node-badge" x="2" y="-7">${badgeText}</text>
                 <rect class="node-shape" width="${w}" height="${h}" rx="10"
@@ -3293,9 +3366,12 @@ export class MateuWorkflowElk extends LitElement {
         `;
     }
 
-    /** Hover detail only makes sense in monitoring view; ignore hovers on the plain editor. */
+    /**
+     * The pointer entered (id) or left (null) a node. Every view tracks it now: a monitoring view
+     * shows its diagnostic card, any other view the name card ({@link renderNameTip}) — a step's
+     * name is cut to fit its card, so the hover is where the whole of it can be read.
+     */
     private onNodeHover(id: string | null) {
-        if (id !== null && !this.hasStateOverlay()) return;
         if (id !== null) {
             this.cancelHoverHide();
             this.hoverId = id;
@@ -3332,11 +3408,17 @@ export class MateuWorkflowElk extends LitElement {
      */
     private renderOverlayTooltip() {
         const id = this.hoverId;
-        if (!id || !this.hasStateOverlay()) return nothing;
+        if (!id) return nothing;
+        // Not while a gesture is under way: a card trailing a dragged node, or sitting over the
+        // node a line is being drawn to, is in the way of the very thing the pointer is doing.
+        if (this.draggingId || this.linkingFrom || this.panning || this.palettePlacing) return nothing;
         const ov = this.overlayData[id];
         const step = this.wf.steps.find(s => s.id === id);
         const pos = this.positions[id];
-        if (!ov || !pos) return nothing;
+        if (!pos || !step) return nothing;
+        // Monitoring view with something to say about this step -> the diagnostic card. A step the
+        // run has not reached has no overlay entry, and it still gets its name card.
+        if (!ov || !this.hasStateOverlay()) return this.renderNameTip(step, pos);
         const {h} = sizeOf(step?.type ?? "ACTION");
         const left = this.panX + pos.x * this.zoomK;
         const top = this.panY + (pos.y + h) * this.zoomK + 8;
@@ -3354,7 +3436,8 @@ export class MateuWorkflowElk extends LitElement {
             <div class="ov-tip" style="left:${left}px; top:${top}px;"
                  @mouseenter="${() => this.cancelHoverHide()}"
                  @mouseleave="${() => this.scheduleHoverHide()}">
-                <div class="tip-head"><span class="tip-name">${step?.name ?? id}</span>${chip}${undoneChip}</div>
+                <div class="tip-head"><span class="tip-name">${step.name || id}</span>${chip}${undoneChip}</div>
+                <div class="tip-sub">${id} · ${step.type}</div>
                 ${ov.reason ? html`<div class="tip-reason">${ov.reason}</div>` : nothing}
                 ${ov.error ? html`<div class="tip-errmsg">${ov.error}</div>` : nothing}
                 ${row("Attempt", attempt)}
@@ -3368,6 +3451,37 @@ export class MateuWorkflowElk extends LitElement {
                         ${ov.variables.map(v => html`
                             <div class="tip-row"><span class="tip-k">${v.name}</span><span class="tip-v">${v.value}</span></div>`)}
                     </div>` : nothing}
+            </div>`;
+    }
+
+    /**
+     * The hover card outside a monitoring view: the step's whole name, which the node itself cuts
+     * at {@link NODE_LABEL_CHARS} characters, its id and type, and the caption above the card when
+     * that was cut too.
+     *
+     * <p>A drawn card rather than an SVG {@code <title>}: a native tooltip takes a second to come
+     * up, ignores the theme, and inside JCEF is drawn by the OS wherever it pleases. This one uses
+     * the same tokens as the rest of the component, so it is light or dark with it, and it takes
+     * no pointer events — it can never be the thing a click, a drag or a hover lands on.
+     */
+    private renderNameTip(step: WorkflowStep, pos: NodePos) {
+        const {w, h} = sizeOf(step.type);
+        const round = isEventType(step.type) || isGatewayType(step.type);
+        // Centred on the node, but kept inside the canvas: the card is at most 320px wide.
+        const centre = this.panX + (pos.x + w / 2) * this.zoomK;
+        const left = this.viewW > 340 ? Math.max(168, Math.min(this.viewW - 168, centre)) : centre;
+        // Above the node, clear of the caption a task card carries over its top edge — or below
+        // it, clear of the caption an event or gateway carries under it, when there is no room
+        // above (a node along the top of the canvas).
+        const above = this.panY + (pos.y - (round ? 0 : 16)) * this.zoomK - 6;
+        const below = above < 72;
+        const top = below ? this.panY + (pos.y + h + (round ? 20 : 0)) * this.zoomK + 6 : above;
+        const badge = round ? "" : badgeOf(step);
+        return html`
+            <div class="name-tip ${below ? "below" : ""}" role="tooltip" style="left:${left}px; top:${top}px;">
+                <div class="tip-name">${step.name || step.id}</div>
+                <div class="tip-sub">${step.id} · ${step.type}</div>
+                ${badge.length > NODE_BADGE_CHARS ? html`<div class="tip-badge">${badge}</div>` : nothing}
             </div>`;
     }
 
@@ -3815,7 +3929,27 @@ export class MateuWorkflowElk extends LitElement {
             box-shadow: 0 6px 20px rgba(15, 23, 42, .18);
             padding: 8px 10px; font-size: 12px; line-height: 1.45;
         }
-        .tip-head {display: flex; align-items: center; gap: 6px; margin-bottom: 4px;}
+        /* exportSvg() reads computed styles: nothing may be mid-transition or mid-animation then */
+        :host([exporting]) *, :host([exporting]) *::before {transition: none !important; animation: none !important;}
+        .tip-head {display: flex; align-items: center; gap: 6px; margin-bottom: 2px;}
+        .tip-sub {font-size: 10.5px; color: var(--ec-text-dim, #64748b); margin-bottom: 4px;
+                  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; word-break: break-all;}
+        /* name card (any view but monitoring): centred above the node, never a pointer target */
+        .name-tip {
+            position: absolute; z-index: 30; pointer-events: none;
+            transform: translate(-50%, -100%); max-width: 320px; width: max-content;
+            background: var(--ec-surface, #fff); color: var(--ec-text, #1e293b);
+            border: 1px solid var(--ec-border, #e2e8f0); border-radius: 7px;
+            box-shadow: 0 4px 14px rgba(15, 23, 42, .16);
+            padding: 5px 9px; font-size: 12px; line-height: 1.4;
+            /* a short delay, so sweeping the pointer across the graph does not flash a card per node */
+            animation: ec-tip-in .12s ease-out .25s both;
+        }
+        .name-tip.below {transform: translate(-50%, 0);}
+        .name-tip .tip-name {font-weight: 700; overflow-wrap: anywhere;}
+        .name-tip .tip-sub {margin-bottom: 0;}
+        .name-tip .tip-badge {font-size: 10.5px; color: var(--ec-text-dim, #64748b); overflow-wrap: anywhere;}
+        @keyframes ec-tip-in {from {opacity: 0;} to {opacity: 1;}}
         .tip-name {font-weight: 700; font-size: 12.5px;}
         .tip-chip {
             margin-left: auto; font-size: 9.5px; font-weight: 700; text-transform: uppercase;

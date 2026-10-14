@@ -1,0 +1,8 @@
+# Fixture for ClasspathCronScheduleLoaderTest: a bare list.
+- cron: "0 0 9 * * MON-FRI"
+  workflow: daily-report
+  zone: Europe/Madrid
+  variables:
+    region: EMEA
+- cron: "0 0 3 * * *"
+  workflow: unknown-workflow

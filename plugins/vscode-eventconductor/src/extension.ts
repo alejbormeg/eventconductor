@@ -29,6 +29,7 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand("eventconductor.openAsText", () => reopenActive("default")),
     vscode.commands.registerCommand("eventconductor.openAsGraph", () => reopenActive(GRAPH_VIEW_TYPE)),
     vscode.commands.registerCommand("eventconductor.showTextBeside", () => openActiveBeside()),
+    vscode.commands.registerCommand("eventconductor.exportSvg", () => exportActiveGraph()),
     // .ecform visual editor commands (mirrors the .ec ones).
     vscode.commands.registerCommand("eventconductor.form.openAsText", () => reopenActive("default")),
     vscode.commands.registerCommand("eventconductor.form.openAsForm", () => reopenActive(FORM_VIEW_TYPE)),
@@ -155,9 +156,27 @@ async function findNearestPom(from: vscode.Uri): Promise<vscode.Uri | undefined>
 }
 
 /**
+ * The file names that hold a workflow definition: the `.ec` extension, and the compound suffixes
+ * that say "workflow" while staying `.yaml` files every tool already knows. Must match the
+ * `customEditors` selector and the `yamlValidation` entry in package.json.
+ */
+const WORKFLOW_SUFFIXES = [".ec", ".workflow.yaml", ".workflow.yml", ".ec.yaml", ".ec.yml"];
+
+function isWorkflowFile(path: string): boolean {
+  const p = path.toLowerCase();
+  return WORKFLOW_SUFFIXES.some((suffix) => p.endsWith(suffix));
+}
+
+/**
  * Bind the bundled JSON schemas through the Red Hat YAML extension's API, so YAML (and JSON, a
- * YAML subset) definition files get validation and completion in the text view: `*.ec` against the
- * workflow-definition schema, `*.ecform` against the form schema.
+ * YAML subset) definition files get validation and completion in the text view: workflow files
+ * (`*.ec`, `*.workflow.yaml`, `*.ec.yaml`, ...) against the workflow-definition schema, `*.ecform`
+ * against the form schema, `*.ecrule` and `*.ectask` against theirs.
+ *
+ * The same associations are declared in package.json under `yamlValidation`, which is what the YAML
+ * extension reads without this extension being active — it only activates with a custom editor, so
+ * opening a `.ecrule` or `.ectask` never runs this. (`jsonValidation` does not help there: it only
+ * applies to documents in the JSON language, and these are YAML.)
  */
 async function registerYamlSchema(context: vscode.ExtensionContext) {
   try {
@@ -167,11 +186,16 @@ async function registerYamlSchema(context: vscode.ExtensionContext) {
     if (!api || typeof api.registerContributor !== "function") return;
     const ecSchemaUri = vscode.Uri.joinPath(context.extensionUri, "schema", "ec.schema.json").toString();
     const formSchemaUri = vscode.Uri.joinPath(context.extensionUri, "schema", "form-schema.json").toString();
+    const ruleSchemaUri = vscode.Uri.joinPath(context.extensionUri, "schema", "rule.schema.json").toString();
+    const taskSchemaUri = vscode.Uri.joinPath(context.extensionUri, "schema", "task.schema.json").toString();
     api.registerContributor(
       "eventconductor",
       (resource: string) => {
-        if (resource.endsWith(".ec")) return ecSchemaUri;
-        if (resource.endsWith(".ecform")) return formSchemaUri;
+        if (isWorkflowFile(resource)) return ecSchemaUri;
+        const r = resource.toLowerCase();
+        if (r.endsWith(".ecform")) return formSchemaUri;
+        if (r.endsWith(".ecrule")) return ruleSchemaUri;
+        if (r.endsWith(".ectask")) return taskSchemaUri;
         return undefined;
       },
       () => undefined
@@ -187,6 +211,23 @@ function activeUri(): vscode.Uri | undefined {
     | { uri?: vscode.Uri }
     | undefined;
   return input?.uri;
+}
+
+/** Open graph editor panels, so a command can reach the webview of the one in front. */
+const graphPanels = new Set<vscode.WebviewPanel>();
+
+/**
+ * "Export Graph as SVG" from the title bar or the palette. Only the webview can draw the SVG, so
+ * this asks the active graph editor for it; the answer comes back as the same `exportSvg`
+ * message the in-graph export button sends, and is saved by the provider below.
+ */
+function exportActiveGraph() {
+  const panel = [...graphPanels].find((p) => p.active);
+  if (!panel) {
+    vscode.window.showWarningMessage("Open a .ec file in the EventConductor graph editor to export it.");
+    return;
+  }
+  panel.webview.postMessage({ type: "requestExport" });
 }
 
 /** Reopen the file in the active tab with the given editor (text = "default", visual = view type). */
@@ -274,7 +315,11 @@ class EventConductorEditorProvider implements vscode.CustomTextEditorProvider {
       if (applyingOwnEdit) return; // our own write — don't echo it back
       pushToWebview();
     });
-    webviewPanel.onDidDispose(() => changeSub.dispose());
+    if (this.config.tag === GRAPH_CONFIG.tag) graphPanels.add(webviewPanel);
+    webviewPanel.onDidDispose(() => {
+      changeSub.dispose();
+      graphPanels.delete(webviewPanel);
+    });
 
     webview.onDidReceiveMessage(async (msg) => {
       if (msg?.type === "ready") {
@@ -299,13 +344,11 @@ class EventConductorEditorProvider implements vscode.CustomTextEditorProvider {
         applyingOwnEdit = false;
       } else if (msg?.type === "exportSvg") {
         // The webview cannot save a file itself, so the export arrives here as text. Offered
-        // beside the definition it came from, which is where somebody exporting a diagram of
-        // this file is going to look for it.
+        // beside the definition it came from and named after it (orders.ec -> orders.svg), which
+        // is where somebody exporting a diagram of this file is going to look for it.
+        const base = document.uri.path.split("/").pop()!.replace(/\.[^.]*$/, "") || "workflow";
         const target = await vscode.window.showSaveDialog({
-          defaultUri: vscode.Uri.joinPath(
-            vscode.Uri.joinPath(document.uri, ".."),
-            String(msg.name || "workflow.svg")
-          ),
+          defaultUri: vscode.Uri.joinPath(vscode.Uri.joinPath(document.uri, ".."), `${base}.svg`),
           filters: { "SVG image": ["svg"] },
           title: "Export workflow graph",
         });

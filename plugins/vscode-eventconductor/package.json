@@ -1,8 +1,8 @@
 {
   "name": "eventconductor-vscode",
   "displayName": "EventConductor",
-  "description": "Edit EventConductor workflow definitions (.ec) as an interactive graph and form definitions (.ecform) as a visual editor, or as YAML/JSON with schema validation.",
-  "version": "0.1.22",
+  "description": "Edit EventConductor workflow definitions (.ec, *.workflow.yaml, *.ec.yaml) as an interactive graph and form definitions (.ecform) as a visual editor, or as YAML/JSON with schema validation.",
+  "version": "0.1.24",
   "publisher": "miguelperezcolom",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -51,6 +51,18 @@
         "selector": [
           {
             "filenamePattern": "*.ec"
+          },
+          {
+            "filenamePattern": "*.workflow.yaml"
+          },
+          {
+            "filenamePattern": "*.workflow.yml"
+          },
+          {
+            "filenamePattern": "*.ec.yaml"
+          },
+          {
+            "filenamePattern": "*.ec.yml"
           }
         ],
         "priority": "default"
@@ -80,6 +92,37 @@
         "url": "./schema/task.schema.json"
       }
     ],
+    "yamlValidation": [
+      {
+        "fileMatch": [
+          "*.ec",
+          "*.workflow.yaml",
+          "*.workflow.yml",
+          "*.ec.yaml",
+          "*.ec.yml"
+        ],
+        "url": "./schema/ec.schema.json"
+      },
+      {
+        "fileMatch": "*.ecform",
+        "url": "./schema/form-schema.json"
+      },
+      {
+        "fileMatch": "*.ecrule",
+        "url": "./schema/rule.schema.json"
+      },
+      {
+        "fileMatch": "*.ectask",
+        "url": "./schema/task.schema.json"
+      },
+      {
+        "fileMatch": [
+          "cron.yaml",
+          "cron.yml"
+        ],
+        "url": "./schema/cron.schema.json"
+      }
+    ],
     "commands": [
       {
         "command": "eventconductor.openAsText",
@@ -93,6 +136,11 @@
         "command": "eventconductor.showTextBeside",
         "title": "EventConductor: Show YAML/JSON side-by-side",
         "icon": "$(split-horizontal)"
+      },
+      {
+        "command": "eventconductor.exportSvg",
+        "title": "EventConductor: Export Graph as SVG",
+        "icon": "$(export)"
       },
       {
         "command": "eventconductor.form.openAsText",
@@ -121,6 +169,12 @@
       }
     ],
     "menus": {
+      "commandPalette": [
+        {
+          "command": "eventconductor.exportSvg",
+          "when": "activeCustomEditorId == eventconductor.graphEditor"
+        }
+      ],
       "explorer/context": [
         {
           "command": "eventconductor.createTaskModule",
@@ -165,6 +219,11 @@
           "command": "eventconductor.openAsText",
           "when": "activeCustomEditorId == eventconductor.graphEditor",
           "group": "navigation@2"
+        },
+        {
+          "command": "eventconductor.exportSvg",
+          "when": "activeCustomEditorId == eventconductor.graphEditor",
+          "group": "navigation@3"
         },
         {
           "command": "eventconductor.form.showTextBeside",
