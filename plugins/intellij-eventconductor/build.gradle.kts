@@ -95,6 +95,9 @@ val syncSchema by tasks.registering(Copy::class) {
     from(repo.resolve("modules/workflow-engine/src/main/resources/workflow-definition-schema.json")) {
         rename { "ec.schema.json" }
     }
+    from(repo.resolve("modules/workflow-engine/src/main/resources/cron-schema.json")) {
+        rename { "cron.schema.json" }
+    }
 
     from(repo.resolve("modules/rule-engine/src/main/resources/rule-schema.json")) {
         rename { "rule.schema.json" }

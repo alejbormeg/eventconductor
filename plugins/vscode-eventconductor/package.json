@@ -80,6 +80,15 @@
         "url": "./schema/task.schema.json"
       }
     ],
+    "yamlValidation": [
+      {
+        "fileMatch": [
+          "cron.yaml",
+          "cron.yml"
+        ],
+        "url": "./schema/cron.schema.json"
+      }
+    ],
     "commands": [
       {
         "command": "eventconductor.openAsText",

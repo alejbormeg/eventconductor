@@ -5,6 +5,7 @@ out/
 media/workflow-graph.js
 media/form-editor.js
 schema/ec.schema.json
+schema/cron.schema.json
 schema/form-schema.json
 schema/rule.schema.json
 schema/task.schema.json
