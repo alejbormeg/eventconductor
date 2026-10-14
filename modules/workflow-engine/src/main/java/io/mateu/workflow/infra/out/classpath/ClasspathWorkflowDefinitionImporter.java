@@ -50,6 +50,8 @@ public class ClasspathWorkflowDefinitionImporter implements ApplicationRunner {
             resources.addAll(Arrays.asList(resolver.getResources("classpath:/workflows/*.json")));
             resources.addAll(Arrays.asList(resolver.getResources("classpath:/workflows/*.{yaml,yml}")));
             resources.addAll(Arrays.asList(resolver.getResources("classpath:/workflows/*.ec")));
+            // cron.yaml sits next to the definitions but holds schedules (ClasspathCronScheduleLoader).
+            resources.removeIf(r -> io.mateu.workflow.analysis.ScheduleRules.isCronFileName(r.getFilename()));
             for (var resource : resources) {
                 try {
                     String filename = resource.getFilename();
@@ -80,7 +82,8 @@ public class ClasspathWorkflowDefinitionImporter implements ApplicationRunner {
                                 .withMaxSteps(def.maxSteps())
                                 .withLayout(def.layout())
                                 .withProcessLock(def.processLock())
-                                .withSyncInvocation(def.syncInvocation());
+                                .withSyncInvocation(def.syncInvocation())
+                                .withSchedules(def.schedules());
                     }
                     workflowDefinitionRepository.save(taskReferenceResolver.resolve(def));
                     log.info("Imported workflow definition '{}' from classpath:{}", def.id(), filename);

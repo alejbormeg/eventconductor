@@ -11,7 +11,8 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
+import java.time.ZonedDateTime;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -33,6 +34,7 @@ public class CronStartScheduler {
     private static final long LOCK_ID = 222333444L;
 
     final WorkflowDefinitionRepository workflowDefinitionRepository;
+    final io.mateu.workflow.application.out.CronScheduleRepository cronScheduleRepository;
     final IngressRouter ingressRouter;
     final JdbcTemplate jdbcTemplate;
     final DbLockDialect dbLockDialect;
@@ -43,7 +45,7 @@ public class CronStartScheduler {
     @org.springframework.beans.factory.annotation.Value("${workflow.cron-enabled:true}")
     boolean enabled;
 
-    private final Map<String, LocalDateTime> lastFireTimes = new ConcurrentHashMap<>();
+    private final Map<String, ZonedDateTime> lastFireTimes = new ConcurrentHashMap<>();
 
     private volatile boolean running = true;
     private Thread cronSchedulerThread;
@@ -60,8 +62,8 @@ public class CronStartScheduler {
                         jdbcTemplate.execute((org.springframework.jdbc.core.ConnectionCallback<Void>) con -> {
                             if (!dbLockDialect.tryLock(con, LOCK_ID)) return null;
                             try {
-                                CronStarts.fireDue(workflowDefinitionRepository, ingressRouter,
-                                        lastFireTimes, LocalDateTime.now());
+                                CronStarts.fireDue(workflowDefinitionRepository, cronScheduleRepository,
+                                        ingressRouter::route, lastFireTimes, Instant.now());
                             } finally {
                                 dbLockDialect.unlock(con, LOCK_ID);
                             }

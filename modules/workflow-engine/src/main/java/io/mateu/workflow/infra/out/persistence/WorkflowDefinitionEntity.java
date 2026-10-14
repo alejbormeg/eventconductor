@@ -90,4 +90,11 @@ public class WorkflowDefinitionEntity {
     @Column(columnDefinition = "TEXT")
     String syncInvocationJson;
 
+    /**
+     * The definition's {@code schedules} as the {@code .ec} file carries them, or null when it
+     * declares none. JSON, like {@code processLockJson}: read whole with the definition.
+     */
+    @Column(columnDefinition = "TEXT")
+    String schedulesJson;
+
 }

@@ -52,6 +52,8 @@ public class ClasspathWorkflowDefinitionRepository implements WorkflowDefinition
             var resources = new java.util.ArrayList<Resource>();
             resources.addAll(Arrays.asList(jsonResources));
             resources.addAll(Arrays.asList(yamlResources));
+            // cron.yaml sits next to the definitions but holds schedules (ClasspathCronScheduleLoader).
+            resources.removeIf(r -> io.mateu.workflow.analysis.ScheduleRules.isCronFileName(r.getFilename()));
             for (var resource : resources) {
                 try {
                     String filename = resource.getFilename();
@@ -72,7 +74,8 @@ public class ClasspathWorkflowDefinitionRepository implements WorkflowDefinition
                                 .withMaxSteps(def.maxSteps())
                                 .withLayout(def.layout())
                                 .withProcessLock(def.processLock())
-                                .withSyncInvocation(def.syncInvocation());
+                                .withSyncInvocation(def.syncInvocation())
+                                .withSchedules(def.schedules());
                     }
                     def = taskReferenceResolver.resolve(def);
                     definitions.put(def.id(), def);

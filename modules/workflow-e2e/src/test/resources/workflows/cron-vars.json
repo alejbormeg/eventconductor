@@ -1,0 +1,35 @@
+{
+  "id": "cron-vars",
+  "name": "Cron started process with variables",
+  "version": 1,
+  "schedules": [
+    {
+      "cron": "* * * * * *",
+      "zone": "UTC",
+      "variables": {
+        "source": "definition",
+        "region": "EMEA"
+      }
+    }
+  ],
+  "steps": [
+    {
+      "id": "start",
+      "type": "START",
+      "name": "Start"
+    },
+    {
+      "id": "tick",
+      "type": "ACTION",
+      "name": "Tick",
+      "topic": "work",
+      "preconditionStepId": "start"
+    },
+    {
+      "id": "end",
+      "type": "END",
+      "name": "End",
+      "preconditionStepId": "tick"
+    }
+  ]
+}

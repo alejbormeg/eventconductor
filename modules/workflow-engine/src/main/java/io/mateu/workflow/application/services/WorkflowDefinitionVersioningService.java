@@ -97,6 +97,12 @@ public class WorkflowDefinitionVersioningService {
         // REPLY steps' own fields ride inside the serialized steps.
         canonical.put("syncInvocation", d.syncInvocation() == null ? null
                 : io.mateu.core.infra.JsonSerializer.toJson(d.syncInvocation()));
+        // Scheduled starts sit beside cronExpression, which is in the hash. Only written when present,
+        // so a definition that declares none hashes exactly as it did before the field existed and a
+        // re-import after the upgrade does not mint a version of every workflow.
+        if (d.schedules() != null) {
+            canonical.put("schedules", io.mateu.core.infra.JsonSerializer.toJson(d.schedules()));
+        }
         canonical.put("defaultMaxStepExecutions", d.defaultMaxStepExecutions());
         canonical.put("steps", d.steps().stream()
                 .sorted(Comparator.comparing(Step::id, Comparator.nullsLast(Comparator.naturalOrder())))

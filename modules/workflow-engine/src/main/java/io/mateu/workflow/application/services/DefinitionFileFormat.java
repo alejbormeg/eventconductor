@@ -12,9 +12,14 @@ public final class DefinitionFileFormat {
 
     private DefinitionFileFormat() {}
 
-    /** Whether a file name is a recognised workflow-definition file (.ec, .json, .yaml, .yml). */
+    /**
+     * Whether a file name is a recognised workflow-definition file (.ec, .json, .yaml, .yml).
+     * A schedule file ({@code cron.yaml} / {@code cron.yml}, see {@code ScheduleRules}) never is, even
+     * though its extension says YAML.
+     */
     public static boolean isDefinitionFileName(String name) {
         if (name == null) return false;
+        if (io.mateu.workflow.analysis.ScheduleRules.isCronFileName(name)) return false;
         var n = name.toLowerCase();
         return n.endsWith(EC_EXTENSION) || n.endsWith(".json") || n.endsWith(".yaml") || n.endsWith(".yml");
     }

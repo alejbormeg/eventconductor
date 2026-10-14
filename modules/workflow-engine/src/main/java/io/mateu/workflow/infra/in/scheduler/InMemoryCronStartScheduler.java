@@ -9,7 +9,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
+import java.time.ZonedDateTime;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
@@ -29,6 +30,7 @@ import java.util.concurrent.TimeUnit;
 public class InMemoryCronStartScheduler {
 
     final WorkflowDefinitionRepository workflowDefinitionRepository;
+    final io.mateu.workflow.application.out.CronScheduleRepository cronScheduleRepository;
     final IngressRouter ingressRouter;
 
     @org.springframework.beans.factory.annotation.Value("${workflow.cron-scan-interval-ms:10000}")
@@ -37,7 +39,7 @@ public class InMemoryCronStartScheduler {
     @org.springframework.beans.factory.annotation.Value("${workflow.cron-enabled:true}")
     boolean enabled;
 
-    private final Map<String, LocalDateTime> lastFireTimes = new ConcurrentHashMap<>();
+    private final Map<String, ZonedDateTime> lastFireTimes = new ConcurrentHashMap<>();
 
     private final ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor(r -> {
         var thread = new Thread(r, "workflow-cron-scheduler");
@@ -60,7 +62,8 @@ public class InMemoryCronStartScheduler {
 
     private void scan() {
         try {
-            CronStarts.fireDue(workflowDefinitionRepository, ingressRouter, lastFireTimes, LocalDateTime.now());
+            CronStarts.fireDue(workflowDefinitionRepository, cronScheduleRepository, ingressRouter::route,
+                    lastFireTimes, Instant.now());
         } catch (Throwable e) {
             log.error("Error checking cron process starts", e);
         }

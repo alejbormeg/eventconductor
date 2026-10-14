@@ -1,0 +1,7 @@
+# Scheduled starts for CronSchedulesE2eTest (cron is off suite-wide; that test turns it on).
+# Not a workflow definition: the importers skip cron.yaml and load it as schedules.
+- cron: "* * * * * *"
+  workflow: cron-vars
+  variables:
+    source: cron-file
+    copies: 2
