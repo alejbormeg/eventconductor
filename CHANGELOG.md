@@ -13,11 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Business keys stay deterministic and distinct per schedule — `<id>-cron-s<index>-<occurrence with offset>` for a definition schedule, `<id>-cron-f<hash of cron, zone, variables>-<occurrence with offset>` for a `cron.yaml` entry — and the last fire is tracked per schedule, not per definition. Missed occurrences are still skipped, not replayed; editing a schedule restarts its clock instead of replaying the new expression.
 - Validation shared by the engine and the Maven plugin (`ScheduleRules` in `definition-analysis`): invalid cron or zone in `schedules` rejects the definition; the plugin also validates `cron.yaml` (new `cron-schema.json`) and fails on entries naming a workflow not defined in the workflows directory. The VS Code and IntelliJ plugins validate `cron.yaml`/`cron.yml` against `cron-schema.json`.
 - The definition detail page has a **Schedules** tab: every schedule of the workflow (`cronExpression`, `schedules`, `cron.yaml` entries) with its zone, variables and next start.
-
 - **`*.workflow.yaml` and `*.ec.yaml` (and their `.yml` twins) as workflow-definition names**, for whoever wants to keep the `.yaml` extension every tool understands. Both IDE plugins open them in the graph editor and validate them against the workflow schema, as they do `.ec`; the engine imports them as the YAML they are. The compound suffix is not part of the name: a file that declares no `id` is imported as `order` from `order.workflow.yaml`, not `order.workflow`.
-
 - **A step's whole name under the pointer.** A node shows the first 22 characters of its name; hovering it now shows the whole name with the step's id and type, in a card drawn in the graph's own light/dark palette — in the definition view, both IDE editors, and the process page (whose diagnostic card gains the id and type, and which shows the name card on steps the run has not reached). The card takes no pointer events, so click, drag and line drawing are unchanged.
 - **"Export Graph as SVG" in the IDE editors.** VS Code: the `EventConductor: Export Graph as SVG` command, in the graph editor's title bar and the command palette. IntelliJ: a toolbar button beside the editor/split/graph toggles. Both go through the graph's own export and save beside the definition as `<file>.svg`.
+
 ### Changed
 - A file named `cron.yaml` or `cron.yml` under `workflows/` (or an imported directory) is no longer read as a workflow definition. Rename a definition that used that name.
 

@@ -8,7 +8,7 @@ plugins {
 }
 
 group = "com.eventconductor"
-version = "0.1.23"
+version = "0.1.24"
 
 repositories {
     mavenCentral()
