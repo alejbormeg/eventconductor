@@ -1,0 +1,11 @@
+- cron: "0 0 9 * * *"
+  workflow: report
+- cron: "0 9 * * *"
+  workflow: report
+- cron: "0 0 9 * * *"
+  workflow: ghost
+- cron: "0 0 9 * * *"
+  workflow: report
+  zone: Mars/Olympus
+  varaibles:
+    a: 1

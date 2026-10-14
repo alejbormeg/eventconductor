@@ -119,6 +119,7 @@
                                     <directory>${project.basedir}/../workflow-engine/src/main/resources</directory>
                                     <includes>
                                         <include>workflow-definition-schema.json</include>
+                                        <include>cron-schema.json</include>
                                     </includes>
                                 </resource>
                                 <resource>
