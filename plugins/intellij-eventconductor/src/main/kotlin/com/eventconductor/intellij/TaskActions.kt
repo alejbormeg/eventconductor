@@ -132,7 +132,7 @@ internal object TaskProjectScaffolder {
 }
 
 /** Base for the two "create project" actions; each only differs by variant and labels. */
-internal abstract class CreateTaskProjectAction(
+abstract class CreateTaskProjectAction(
     private val variant: ProjectSpec.Variant,
 ) : AnAction() {
 

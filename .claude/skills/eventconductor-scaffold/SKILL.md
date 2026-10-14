@@ -89,7 +89,8 @@ forms/rules in memory.
 
 ## 5. Place your definitions and workers
 
-- Put `.json` / `.yaml` definitions under `src/main/resources/workflows/`
+- Put `.json` / `.yaml` / `.ec` definitions under `src/main/resources/workflows/` (prefer
+  `order.workflow.yaml` or `order.ec.yaml`/`order.ec` — the IDE plugins recognise those names)
   (loaded from `classpath:/workflows/` at startup; in `jpa` mode also importable from Git).
 - Implement workers — embedded: an `EmbeddedTaskExecutor` bean; Kafka: a Cloud Stream
   consumer. See the `eventconductor` skill.

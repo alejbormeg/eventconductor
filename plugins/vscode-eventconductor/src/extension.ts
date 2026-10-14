@@ -155,9 +155,27 @@ async function findNearestPom(from: vscode.Uri): Promise<vscode.Uri | undefined>
 }
 
 /**
+ * The file names that hold a workflow definition: the `.ec` extension, and the compound suffixes
+ * that say "workflow" while staying `.yaml` files every tool already knows. Must match the
+ * `customEditors` selector and the `yamlValidation` entry in package.json.
+ */
+const WORKFLOW_SUFFIXES = [".ec", ".workflow.yaml", ".workflow.yml", ".ec.yaml", ".ec.yml"];
+
+function isWorkflowFile(path: string): boolean {
+  const p = path.toLowerCase();
+  return WORKFLOW_SUFFIXES.some((suffix) => p.endsWith(suffix));
+}
+
+/**
  * Bind the bundled JSON schemas through the Red Hat YAML extension's API, so YAML (and JSON, a
- * YAML subset) definition files get validation and completion in the text view: `*.ec` against the
- * workflow-definition schema, `*.ecform` against the form schema.
+ * YAML subset) definition files get validation and completion in the text view: workflow files
+ * (`*.ec`, `*.workflow.yaml`, `*.ec.yaml`, ...) against the workflow-definition schema, `*.ecform`
+ * against the form schema, `*.ecrule` and `*.ectask` against theirs.
+ *
+ * The same associations are declared in package.json under `yamlValidation`, which is what the YAML
+ * extension reads without this extension being active — it only activates with a custom editor, so
+ * opening a `.ecrule` or `.ectask` never runs this. (`jsonValidation` does not help there: it only
+ * applies to documents in the JSON language, and these are YAML.)
  */
 async function registerYamlSchema(context: vscode.ExtensionContext) {
   try {
@@ -167,11 +185,16 @@ async function registerYamlSchema(context: vscode.ExtensionContext) {
     if (!api || typeof api.registerContributor !== "function") return;
     const ecSchemaUri = vscode.Uri.joinPath(context.extensionUri, "schema", "ec.schema.json").toString();
     const formSchemaUri = vscode.Uri.joinPath(context.extensionUri, "schema", "form-schema.json").toString();
+    const ruleSchemaUri = vscode.Uri.joinPath(context.extensionUri, "schema", "rule.schema.json").toString();
+    const taskSchemaUri = vscode.Uri.joinPath(context.extensionUri, "schema", "task.schema.json").toString();
     api.registerContributor(
       "eventconductor",
       (resource: string) => {
-        if (resource.endsWith(".ec")) return ecSchemaUri;
-        if (resource.endsWith(".ecform")) return formSchemaUri;
+        if (isWorkflowFile(resource)) return ecSchemaUri;
+        const r = resource.toLowerCase();
+        if (r.endsWith(".ecform")) return formSchemaUri;
+        if (r.endsWith(".ecrule")) return ruleSchemaUri;
+        if (r.endsWith(".ectask")) return taskSchemaUri;
         return undefined;
       },
       () => undefined

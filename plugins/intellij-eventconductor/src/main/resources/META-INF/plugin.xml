@@ -4,7 +4,8 @@
     <vendor url="https://github.com/miguelperezcolom/eventconductor">EventConductor</vendor>
 
     <description><![CDATA[
-        Edit EventConductor workflow definitions (<code>.ec</code>) as an interactive graph and form
+        Edit EventConductor workflow definitions (<code>.ec</code>, <code>*.workflow.yaml</code>,
+        <code>*.ec.yaml</code>) as an interactive graph and form
         definitions (<code>.ecform</code>) as a visual editor, or as YAML/JSON with schema validation.
         The graph and form editors are the same components used inside the EventConductor app,
         embedded via JCEF, backed by the text document so both views stay in sync.
@@ -15,15 +16,21 @@
     <depends>org.jetbrains.plugins.yaml</depends>
 
     <extensions defaultExtensionNs="com.intellij">
-        <!-- Parse .ec and .ecform as YAML (a JSON superset) so they get highlighting and, together
-             with the schema providers below, validation. Without a file-type association they are
-             plain text and the JSON-schema engine has no PSI to validate. Multiple extensions are
-             semicolon-separated. (.ecform, not .form: .form is reserved by IntelliJ's built-in
-             Swing GUI Designer, which would suppress our editor.) -->
-        <fileType name="YAML" extensions="ec;ecform;ecrule;ectask"/>
+        <!-- Parse .ec, .ecform, .ecrule and .ectask as YAML (a JSON superset) so they get
+             highlighting and, together with the schema providers below, validation. Without a
+             file-type association they are plain text and the JSON-schema engine has no PSI to
+             validate. A file type of our own (language YAML) rather than extra extensions on the
+             YAML plugin's type: a stale <removed_mapping ext="ec" type="YAML"/> in the IDE's
+             filetypes.xml used to strip .ec from YAML on every start, whatever this plugin declared
+             — see EcFileType. (.ecform, not .form: .form is reserved by IntelliJ's built-in Swing
+             GUI Designer, which would suppress our editor.)
+             *.workflow.yaml / *.ec.yaml (and .yml) need no entry: they are YAML files already, and
+             the workflow schema provider and graph editor recognise them by name. -->
+        <fileType name="EventConductor" implementationClass="com.eventconductor.intellij.EcFileType"
+                  fieldName="INSTANCE" extensions="ec;ecform;ecrule;ectask"/>
         <!-- Split editors: text (YAML/JSON) on one side, the interactive JCEF view on the other.
-             .ec gets the workflow graph; .ecform gets the visual form editor. Each provider's accept()
-             is scoped to its own extension. -->
+             Workflow files (.ec, *.workflow.yaml, *.ec.yaml, ...) get the graph; .ecform gets the
+             visual form editor. Each provider's accept() is scoped to its own file names. -->
         <fileEditorProvider implementation="com.eventconductor.intellij.EcFileEditorProvider"/>
         <fileEditorProvider implementation="com.eventconductor.intellij.FormFileEditorProvider"/>
     </extensions>
