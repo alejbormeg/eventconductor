@@ -18,12 +18,19 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Reads rule definitions from classpath:/rules/*.{json,yaml,yml}. Active when
- * rules.source=classpath.
+ * Reads rule definitions from classpath:/rules/ ({@code .ecrule}, {@code .json}, {@code .yaml},
+ * {@code .yml}). Active when rules.source=classpath.
  */
 public class ClasspathRuleSource implements RuleSource {
 
     private static final Logger log = LoggerFactory.getLogger(ClasspathRuleSource.class);
+
+    /**
+     * One pattern per extension, never {@code *.{yaml,yml}}: Spring's {@code AntPathMatcher} has no
+     * brace alternation and reads {@code {yaml,yml}} as a variable matching any extension, so that
+     * pattern loaded every {@code .json} rule twice and tried stray files as rules.
+     */
+    static final List<String> PATTERNS = List.of("*.ecrule", "*.json", "*.yaml", "*.yml");
 
     private final RuleJsonMapper ruleJsonMapper;
     private final Map<String, Rule> rules = new ConcurrentHashMap<>();
@@ -38,8 +45,9 @@ public class ClasspathRuleSource implements RuleSource {
         var resolver = new PathMatchingResourcePatternResolver();
         try {
             var resources = new ArrayList<Resource>();
-            resources.addAll(Arrays.asList(resolver.getResources("classpath:/rules/*.json")));
-            resources.addAll(Arrays.asList(resolver.getResources("classpath:/rules/*.{yaml,yml}")));
+            for (var pattern : PATTERNS) {
+                resources.addAll(Arrays.asList(resolver.getResources("classpath:/rules/" + pattern)));
+            }
             for (var resource : resources) {
                 try {
                     var content = new String(resource.getInputStream().readAllBytes(), StandardCharsets.UTF_8);

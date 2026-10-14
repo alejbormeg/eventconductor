@@ -43,9 +43,9 @@ public class ClasspathTaskContractImporter implements ApplicationRunner {
         var resolver = new PathMatchingResourcePatternResolver();
         try {
             var resources = new ArrayList<Resource>();
-            resources.addAll(List.of(resolver.getResources("classpath:/tasks/*.ectask")));
-            resources.addAll(List.of(resolver.getResources("classpath:/tasks/*.json")));
-            resources.addAll(List.of(resolver.getResources("classpath:/tasks/*.{yaml,yml}")));
+            for (var pattern : ClasspathTaskContractRepository.PATTERNS) {
+                resources.addAll(List.of(resolver.getResources("classpath:/tasks/" + pattern)));
+            }
             for (var resource : resources) {
                 try {
                     var filename = resource.getFilename();
