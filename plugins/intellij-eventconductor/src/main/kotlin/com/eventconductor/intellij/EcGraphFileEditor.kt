@@ -81,6 +81,15 @@ class EcGraphFileEditor(
         browser.loadHTML(buildHtml())
     }
 
+    /**
+     * The editor toolbar's "Export Graph as SVG": asks the page to export, which takes the same
+     * path as the graph's own export button and comes back through [onExport] to [saveExport].
+     */
+    fun requestExport() {
+        if (!pageReady) return
+        exec("(function(g){ if (g && g.requestExport) g.requestExport(); })(document.querySelector('eventconductor-workflow-graph'));")
+    }
+
     private fun exec(js: String) = browser.cefBrowser.executeJavaScript(js, browser.cefBrowser.url, 0)
 
     /** Dark vs light UI from the panel background luminance — avoids the removed isUnderDarcula(). */
@@ -97,19 +106,21 @@ class EcGraphFileEditor(
     }
 
     /**
-     * Writes an exported graph where the user asks. The payload is the suggested file name and the
-     * SVG, both base64 and joined by a dot — base64's alphabet has no dot, so the split needs no
-     * escaping in the injected call.
+     * Writes an exported graph where the user asks. The payload is the page's suggested file name
+     * and the SVG, both base64 and joined by a dot — base64's alphabet has no dot, so the split
+     * needs no escaping in the injected call.
      *
-     * <p>The save dialog opens beside the definition the graph came from, which is where somebody
-     * exporting a picture of this file expects to put it.
+     * <p>The save dialog opens beside the definition the graph came from, named after it
+     * (`orders.ec` -> `orders.svg`), which is where somebody exporting a picture of this file
+     * expects to find it. The page's own suggestion (the workflow id) is only the fallback.
      */
     private fun saveExport(payload: String) {
         val dot = payload.indexOf('.')
         if (dot <= 0) return
         val decoder = Base64.getDecoder()
-        val name = String(decoder.decode(payload.substring(0, dot)), StandardCharsets.UTF_8)
+        val suggested = String(decoder.decode(payload.substring(0, dot)), StandardCharsets.UTF_8)
         val svg = String(decoder.decode(payload.substring(dot + 1)), StandardCharsets.UTF_8)
+        val name = file.nameWithoutExtension.takeIf { it.isNotBlank() }?.let { "$it.svg" } ?: suggested
         ApplicationManager.getApplication().invokeLater {
             val descriptor = FileSaverDescriptor("Export Workflow Graph", "Save the graph as an SVG image", "svg")
             val dialog = FileChooserFactory.getInstance().createSaveFileDialog(descriptor, project)
@@ -168,5 +179,6 @@ class EcGraphFileEditor(
 
     override fun dispose() {
         Disposer.dispose(onEdit)
+        Disposer.dispose(onExport)
     }
 }

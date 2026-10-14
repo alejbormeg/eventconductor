@@ -29,6 +29,7 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand("eventconductor.openAsText", () => reopenActive("default")),
     vscode.commands.registerCommand("eventconductor.openAsGraph", () => reopenActive(GRAPH_VIEW_TYPE)),
     vscode.commands.registerCommand("eventconductor.showTextBeside", () => openActiveBeside()),
+    vscode.commands.registerCommand("eventconductor.exportSvg", () => exportActiveGraph()),
     // .ecform visual editor commands (mirrors the .ec ones).
     vscode.commands.registerCommand("eventconductor.form.openAsText", () => reopenActive("default")),
     vscode.commands.registerCommand("eventconductor.form.openAsForm", () => reopenActive(FORM_VIEW_TYPE)),
@@ -189,6 +190,23 @@ function activeUri(): vscode.Uri | undefined {
   return input?.uri;
 }
 
+/** Open graph editor panels, so a command can reach the webview of the one in front. */
+const graphPanels = new Set<vscode.WebviewPanel>();
+
+/**
+ * "Export Graph as SVG" from the title bar or the palette. Only the webview can draw the SVG, so
+ * this asks the active graph editor for it; the answer comes back as the same `exportSvg`
+ * message the in-graph export button sends, and is saved by the provider below.
+ */
+function exportActiveGraph() {
+  const panel = [...graphPanels].find((p) => p.active);
+  if (!panel) {
+    vscode.window.showWarningMessage("Open a .ec file in the EventConductor graph editor to export it.");
+    return;
+  }
+  panel.webview.postMessage({ type: "requestExport" });
+}
+
 /** Reopen the file in the active tab with the given editor (text = "default", visual = view type). */
 function reopenActive(viewType: string) {
   const uri = activeUri();
@@ -274,7 +292,11 @@ class EventConductorEditorProvider implements vscode.CustomTextEditorProvider {
       if (applyingOwnEdit) return; // our own write — don't echo it back
       pushToWebview();
     });
-    webviewPanel.onDidDispose(() => changeSub.dispose());
+    if (this.config.tag === GRAPH_CONFIG.tag) graphPanels.add(webviewPanel);
+    webviewPanel.onDidDispose(() => {
+      changeSub.dispose();
+      graphPanels.delete(webviewPanel);
+    });
 
     webview.onDidReceiveMessage(async (msg) => {
       if (msg?.type === "ready") {
@@ -299,13 +321,11 @@ class EventConductorEditorProvider implements vscode.CustomTextEditorProvider {
         applyingOwnEdit = false;
       } else if (msg?.type === "exportSvg") {
         // The webview cannot save a file itself, so the export arrives here as text. Offered
-        // beside the definition it came from, which is where somebody exporting a diagram of
-        // this file is going to look for it.
+        // beside the definition it came from and named after it (orders.ec -> orders.svg), which
+        // is where somebody exporting a diagram of this file is going to look for it.
+        const base = document.uri.path.split("/").pop()!.replace(/\.[^.]*$/, "") || "workflow";
         const target = await vscode.window.showSaveDialog({
-          defaultUri: vscode.Uri.joinPath(
-            vscode.Uri.joinPath(document.uri, ".."),
-            String(msg.name || "workflow.svg")
-          ),
+          defaultUri: vscode.Uri.joinPath(vscode.Uri.joinPath(document.uri, ".."), `${base}.svg`),
           filters: { "SVG image": ["svg"] },
           title: "Export workflow graph",
         });

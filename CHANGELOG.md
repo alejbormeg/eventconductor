@@ -7,7 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **A step's whole name under the pointer.** A node shows the first 22 characters of its name; hovering it now shows the whole name with the step's id and type, in a card drawn in the graph's own light/dark palette — in the definition view, both IDE editors, and the process page (whose diagnostic card gains the id and type, and which shows the name card on steps the run has not reached). The card takes no pointer events, so click, drag and line drawing are unchanged.
+- **"Export Graph as SVG" in the IDE editors.** VS Code: the `EventConductor: Export Graph as SVG` command, in the graph editor's title bar and the command palette. IntelliJ: a toolbar button beside the editor/split/graph toggles. Both go through the graph's own export and save beside the definition as `<file>.svg`.
+
 ### Fixed
+- **The SVG export is only the graph.** Selection, link-drawing and focus highlights, native tooltips, edge hit targets and Lit's markers no longer end up in the file; colours are read with transitions and animations off — exported from a dark host, the file came out different from the light one, with strokes caught mid-transition — and a resolved `color-mix()` (the heatmap tint) is written as `rgb()` rather than `color(srgb …)`, which Inkscape and office suites do not read; uppercase captions are written in uppercase.
 - **A task's own page, `/forms/task/{id}`, opens again.** Since the Mateu 3.0-alpha.331 bump turned its `@Route` into `@UI`, the page was an app of its own at the literal path `/forms/task/:_taskId`, and the route inside `/_forms` answered "Not found." — the tasks list's Run led nowhere and a task could not be claimed or completed from the UI. The route is now registered in Mateu's route registry (`FormsRoutes`), with the tasks list's, so both answer through either front door of the pod (`/_forms` and `/_forms-admin`).
 - **Claiming a task claims it for the caller.** The task page wrote `miguel` as the assignee of every task it claimed, so Complete — enabled only for the assignee — was nobody's to press. It now takes the signed-in user, does not take a task already claimed by someone else, and refuses a completion from anyone but the assignee (as Tasks v2 already did).
 - **Completing a task returns to the list of the console it was done in**, instead of always to `/_forms`.
