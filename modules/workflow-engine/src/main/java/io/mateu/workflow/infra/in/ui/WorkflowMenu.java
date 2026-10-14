@@ -3,6 +3,7 @@ package io.mateu.workflow.infra.in.ui;
 import io.mateu.uidl.annotations.Menu;
 import io.mateu.workflow.infra.in.ui.pages.WorkflowDefinitions;
 import io.mateu.workflow.infra.in.ui.pages.analytics.Analytics;
+import io.mateu.workflow.infra.in.ui.pages.schedules.Schedules;
 import io.mateu.workflow.infra.in.ui.pages.process.Processes;
 import io.mateu.workflow.infra.in.ui.pages.steps.StepExecutions;
 import io.mateu.workflow.infra.in.ui.pages.taskcontracts.TaskContracts;
@@ -12,7 +13,7 @@ import io.mateu.workflow.infra.in.ui.pages.taskcontracts.TaskContracts;
  * mounts to get the whole thing.
  *
  * <p>Deliberately left whole after the operations / administration split. An application that
- * mounts this keeps getting all four sections, which is what the testbenches and the UI e2e suite
+ * mounts this keeps getting every section, which is what the testbenches and the UI e2e suite
  * do and what any embedder outside this repository has already been given. The split is offered
  * <em>beside</em> it — {@link WorkflowOperationsMenu} and {@link WorkflowAdminMenu} — for a
  * deployment that puts the two halves on different consoles behind different gates. Narrowing this
@@ -32,6 +33,9 @@ public class WorkflowMenu {
 
     @Menu
     TaskContracts tasks;
+
+    @Menu
+    Schedules schedules;
 
     @Menu
     Analytics analytics;

@@ -68,7 +68,8 @@ The expression uses Spring cron syntax (six fields, seconds first — `0 0 9 * *
 
 ```yaml
 schedules:
-  - cron: "0 0 9 * * MON-FRI"
+  - id: daily-report-emea        # optional: the schedule's name, one schedule per id
+    cron: "0 0 9 * * MON-FRI"
     zone: Europe/Madrid          # IANA zone; default workflow.time.zone (the JVM's zone unless set)
     variables:
       region: EMEA               # initial process variables (strings; numbers/booleans read as text)
@@ -80,13 +81,30 @@ schedules:
 Or put them in a `cron.yaml` next to the definitions — `classpath:/workflows/cron.yaml`, an imported directory or git repository — naming the workflow each entry starts (a bare list, or the list under a single `schedules:` key):
 
 ```yaml
-- cron: "0 0 18 * * MON-FRI"
+- id: daily-report-latam
+  cron: "0 0 18 * * MON-FRI"
   workflow: daily-report
   zone: Europe/Madrid
   variables: { region: LATAM }
 ```
 
-`cron.yaml` is never imported as a definition. Each import of a source replaces that source's entries (a removed entry stops firing); an entry naming an unknown workflow, or with an invalid cron or zone, is logged and skipped. Business keys stay deterministic and distinct per schedule: `<id>-cron-<local time>` for `cronExpression` (as before), `<id>-cron-s<index>-<time with offset>` for `schedules[index]`, `<id>-cron-f<hash>-<time with offset>` for a `cron.yaml` entry. The definition page's **Schedules** tab lists them all with their next start.
+`cron.yaml` is never imported as a definition. Each import of a source replaces that source's entries (a removed entry stops firing); an entry naming an unknown workflow, or with an invalid cron or zone, is logged and skipped. Business keys stay deterministic and distinct per schedule: `<workflow>-cron-<id>-<time with offset>` for a schedule that declares an `id`, wherever it is declared; otherwise `<workflow>-cron-<local time>` for `cronExpression` (as before), `<workflow>-cron-s<index>-<time with offset>` for `schedules[index]`, `<workflow>-cron-f<hash>-<time with offset>` for a `cron.yaml` entry. The definition page's **Schedules** tab lists them all with their next start and status, each id a link to the schedule's own page.
+
+An `id` (letters, digits, `.`, `_`, `-`) names a schedule across the engine: one schedule per id. Without one the engine derives it from the workflow and the entry's content (`<workflow>~cron`, `<workflow>~s<hash>`, `<workflow>~f<hash>`), which is stable across imports but changes when the entry is edited.
+
+### Managing schedules from the UI, the REST API and MCP
+
+A file is the optional, durable home of a schedule, not a precondition for having one. **Workflow → Schedules** in the admin console lists every schedule — workflow, cron and the same in words, zone, next start, source (`Definition`, `cron.yaml (git)`, `cron.yaml (directory)`, `cron.yaml (classpath)`, `UI/API`) and status — and creates new ones. The same is available as a REST API under `/workflow/api/schedules` and as MCP tools (`listSchedules`, `getSchedule`, `createSchedule`, `updateSchedule`, `deleteSchedule`, `pauseSchedule`, `resumeSchedule`, `runScheduleNow`, `exportScheduleYaml`, `listWorkflowDefinitions`).
+
+- **Any schedule** can be paused and resumed — the pause is kept by id, so it survives every re-import of the file that declares it; resuming does not replay what fell due meanwhile — and **run now**, which starts one process immediately (paused or not) under the business key `<workflow>-cron-manual-<id>-<instant>`.
+- **Only schedules created from the UI/API/MCP** are edited and deleted there. One declared in a definition or a `cron.yaml` is changed in its file.
+
+The lifecycle:
+
+1. **Create** the schedule from the UI (or the API, or an agent) with an `id`, and try it: run it now, pause it, edit it.
+2. **Promote** it: its page shows its `cron.yaml` entry, id included (also `GET /workflow/api/schedules/{id}/yaml`, `exportScheduleYaml`). Commit it next to the definitions.
+3. **Git owns it**: on the next import, what comes from git overwrites what was set from the UI, matched by `id` — the stored copy is deleted, the file's values and source take over, its pause carries over, and its business keys do not change, so no occurrence fires twice. An `id` declared in a definition's `schedules` takes over the same way.
+4. **Gone from git, gone**: an entry removed from its file is deleted with its pause, including one that started life in the UI. Imports never touch the schedules created from the UI/API/MCP otherwise.
 
 Cron scanning can be tuned or disabled with `workflow.cron-scan-interval-ms` and `workflow.cron-enabled` (see the [configuration reference](/reference/configuration/)).
 

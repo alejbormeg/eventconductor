@@ -436,8 +436,9 @@ public record WorkflowDefinition(
     }
 
     /**
-     * Each declared schedule must have a cron the engine can parse and, when it names one, a zone
-     * it can read — the rules the Maven plugin applies too ({@code ScheduleRules}).
+     * Each declared schedule must have a cron the engine can parse, when it names one a zone it can
+     * read, and an id (optional) that is a valid one and not repeated in the list — the rules the
+     * Maven plugin applies too ({@code ScheduleRules}).
      */
     private void checkSchedules() {
         if (schedules == null) return;
@@ -445,8 +446,10 @@ public record WorkflowDefinition(
         for (int i = 0; i < schedules.size(); i++) {
             var schedule = schedules.get(i);
             violations.addAll(io.mateu.workflow.analysis.ScheduleRules.violations(
-                    schedule.cron(), schedule.zone(), "schedules[" + i + "]"));
+                    schedule.id(), schedule.cron(), schedule.zone(), "schedules[" + i + "]"));
         }
+        violations.addAll(io.mateu.workflow.analysis.ScheduleRules.duplicateIdViolations(
+                schedules.stream().map(CronSchedule::id).toList(), "schedules"));
         if (!violations.isEmpty()) {
             throw new IllegalStateException(String.join("; ", violations) + ".");
         }

@@ -37,7 +37,7 @@ class ImportCronFilesFromDirectoryTest {
             new ImportWorkflowDefinitionsFromDirectoryUseCase(
                     mock(DirectoryImportProperties.class), definitions, new InMemoryImportedDefinitionsRegistry(),
                     new WorkflowDefinitionValidator(), taskReferenceResolver,
-                    new CronScheduleImporter(definitions, schedules));
+                    new CronScheduleImporter(definitions, schedules, new io.mateu.workflow.infra.out.memory.InMemorySchedulePauseRepository()));
 
     private static void writeDefinition(Path dir, String id, String extra) throws Exception {
         Files.writeString(dir.resolve(id + ".yaml"), """

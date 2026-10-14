@@ -172,8 +172,10 @@ public class SpecValidator {
                 continue; // the schema already reports a missing or non-string cron
             }
             violations.addAll(io.mateu.workflow.analysis.ScheduleRules.violations(
-                    cron, text(entry, "zone"), "entry " + i));
+                    text(entry, "id"), cron, text(entry, "zone"), "entry " + i));
         }
+        violations.addAll(io.mateu.workflow.analysis.ScheduleRules.duplicateIdViolations(
+                entries.stream().map(entry -> text(entry, "id")).toList(), null));
     }
 
     // --- Workflow semantics: mirror WorkflowDefinition.checkInvariants() + cron validation. ---
@@ -190,9 +192,13 @@ public class SpecValidator {
                 String scheduleCron = text(schedules.get(i), "cron");
                 if (scheduleCron != null) {
                     violations.addAll(io.mateu.workflow.analysis.ScheduleRules.violations(
-                            scheduleCron, text(schedules.get(i), "zone"), "schedules[" + i + "]"));
+                            text(schedules.get(i), "id"), scheduleCron, text(schedules.get(i), "zone"),
+                            "schedules[" + i + "]"));
                 }
             }
+            var scheduleIds = new ArrayList<String>();
+            schedules.forEach(schedule -> scheduleIds.add(text(schedule, "id")));
+            violations.addAll(io.mateu.workflow.analysis.ScheduleRules.duplicateIdViolations(scheduleIds, "schedules"));
         }
 
         JsonNode steps = wf.get("steps");

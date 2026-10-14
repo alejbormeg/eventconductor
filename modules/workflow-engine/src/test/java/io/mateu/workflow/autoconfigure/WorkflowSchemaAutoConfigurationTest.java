@@ -52,6 +52,11 @@ class WorkflowSchemaAutoConfigurationTest {
             // every scheduler tick — is a full table scan.
             assertThat(indexExists(dataSource, "idx_step_exec_deadline")).isTrue();
             assertThat(indexExists(dataSource, "idx_outbox_status_ts")).isTrue();
+
+            // Schedules: cron.yaml and engine-created entries (V37, V38), and pauses kept by id (V38).
+            assertThat(tableExists(dataSource, "cron_schedule")).isTrue();
+            assertThat(indexExists(dataSource, "idx_cron_schedule_schedule_id")).isTrue();
+            assertThat(tableExists(dataSource, "cron_schedule_pause")).isTrue();
         });
     }
 

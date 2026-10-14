@@ -21,7 +21,7 @@ class CronScheduleImporterTest {
 
     private final WorkflowDefinitionRepository definitions = mock(WorkflowDefinitionRepository.class);
     private final InMemoryCronScheduleRepository repository = new InMemoryCronScheduleRepository();
-    private final CronScheduleImporter importer = new CronScheduleImporter(definitions, repository);
+    private final CronScheduleImporter importer = new CronScheduleImporter(definitions, repository, new io.mateu.workflow.infra.out.memory.InMemorySchedulePauseRepository());
 
     private static byte[] yaml(String text) {
         return text.getBytes(StandardCharsets.UTF_8);

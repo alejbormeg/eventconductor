@@ -82,6 +82,39 @@ class SpecValidatorTest {
                         + " (six fields, seconds first, e.g. \"0 0 9 * * MON-FRI\")");
     }
 
+    @Test
+    void scheduleIdsAreSlugsDeclaredOncePerList() throws Exception {
+        var cron = new YAMLMapper().readTree("""
+                - id: nightly
+                  cron: "@daily"
+                  workflow: nightly
+                - id: nightly
+                  cron: "@hourly"
+                  workflow: nightly
+                - id: "not a slug"
+                  cron: "@hourly"
+                  workflow: nightly
+                """);
+        assertThat(validator.validate(SpecValidator.Kind.CRON, cron))
+                .anySatisfy(v -> assertThat(v).contains("entry 2: 'not a slug' is not a valid schedule id"))
+                .anySatisfy(v -> assertThat(v).isEqualTo("schedule id 'nightly' is declared more than once"));
+
+        var definition = new YAMLMapper().readTree("""
+                name: Named schedules
+                schedules:
+                  - id: morning
+                    cron: "0 0 9 * * *"
+                  - id: morning
+                    cron: "0 0 10 * * *"
+                steps:
+                  - id: start
+                    type: START
+                    name: Start
+                """);
+        assertThat(validator.validate(SpecValidator.Kind.WORKFLOW, definition))
+                .containsExactly("schedules: schedule id 'morning' is declared more than once");
+    }
+
     /**
      * A definition carrying a hand-made diagram arrangement passes the build gate. The graph editor
      * writes `layout` into .ec files, and the schema root refuses anything it does not declare — so

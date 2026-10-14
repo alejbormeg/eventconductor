@@ -16,7 +16,7 @@ class NavigationJourneyTest extends AbstractUiE2eTest {
     @Test
     void theWorkflowMenuOffersTheEnginesSections() {
         org.assertj.core.api.Assertions.assertThat(ui.workflowMenuItems())
-                .containsExactlyInAnyOrder("Definitions", "Processes", "Steps", "Tasks", "Analytics");
+                .containsExactlyInAnyOrder("Definitions", "Processes", "Steps", "Tasks", "Schedules", "Analytics");
     }
 
     @Test

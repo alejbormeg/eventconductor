@@ -192,4 +192,38 @@ class CronStartsTest {
         assertThat(next).hasValueSatisfying(n -> assertThat(n.toInstant()).isEqualTo(Instant.parse("2026-10-15T07:00:00Z")));
         assertThat(new CronSchedule("bad").nextFire(Instant.now())).isEmpty();
     }
+
+    @Test
+    void aPausedScheduleDoesNotFireAndResumingDoesNotReplayWhatFellDueMeanwhile() {
+        var defs = List.of(definition("report", null, List.of(new CronSchedule("hourly", "0 0 * * * *", "UTC", null))));
+
+        CronStarts.fireDue(defs, List.of(), java.util.Set.of(), fired::add, lastFireTimes, Instant.parse("2026-10-14T10:30:00Z"));
+        CronStarts.fireDue(defs, List.of(), java.util.Set.of("hourly"), fired::add, lastFireTimes, Instant.parse("2026-10-14T11:00:01Z"));
+        CronStarts.fireDue(defs, List.of(), java.util.Set.of("hourly"), fired::add, lastFireTimes, Instant.parse("2026-10-14T12:00:01Z"));
+        assertThat(fired).isEmpty();
+
+        CronStarts.fireDue(defs, List.of(), java.util.Set.of(), fired::add, lastFireTimes, Instant.parse("2026-10-14T12:30:00Z"));
+        CronStarts.fireDue(defs, List.of(), java.util.Set.of(), fired::add, lastFireTimes, Instant.parse("2026-10-14T13:00:01Z"));
+        assertThat(fired).extracting(ProcessCreationRequested::businessKey)
+                .containsExactly("report-cron-hourly-2026-10-14T13:00:00Z");
+    }
+
+    @Test
+    void aScheduleHandedOverFromTheUiToGitNeitherRepeatsNorSkipsAnOccurrence() {
+        var defs = List.of(definition("report", null, null));
+        var schedule = new CronSchedule("nightly", "0 0 * * * *", "UTC", vars("region", "EMEA"));
+        var fromUi = List.of(new CronFileSchedule(io.mateu.workflow.domain.aggregates.Schedule.API_SOURCE, 0, "report", schedule));
+        var fromGit = List.of(new CronFileSchedule("https://git.example.com/defs.git", 0, "report", schedule));
+        // Both at once — the instant between the file's import and the UI copy's deletion.
+        var both = new ArrayList<CronFileSchedule>(fromUi);
+        both.addAll(fromGit);
+
+        scan(defs, fromUi, "2026-10-14T10:30:00Z");
+        scan(defs, fromUi, "2026-10-14T11:00:01Z");
+        scan(defs, both, "2026-10-14T11:30:00Z");
+        scan(defs, fromGit, "2026-10-14T12:00:01Z");
+
+        assertThat(fired).extracting(ProcessCreationRequested::businessKey).containsExactly(
+                "report-cron-nightly-2026-10-14T11:00:00Z", "report-cron-nightly-2026-10-14T12:00:00Z");
+    }
 }

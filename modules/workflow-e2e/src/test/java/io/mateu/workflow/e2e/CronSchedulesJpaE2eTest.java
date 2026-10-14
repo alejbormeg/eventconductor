@@ -24,6 +24,9 @@ class CronSchedulesJpaE2eTest extends AbstractJpaE2eTest {
 
     @Autowired WorkflowDefinitionRepository workflowDefinitionRepository;
     @Autowired CronScheduleRepository cronScheduleRepository;
+    @Autowired io.mateu.workflow.application.out.SchedulePauseRepository schedulePauseRepository;
+    @Autowired io.mateu.workflow.application.services.ScheduleService scheduleService;
+    @Autowired io.mateu.workflow.application.services.CronScheduleImporter cronScheduleImporter;
 
     @Test
     void schedulesArePersistedAndCronFileEntriesReplacedPerSource() {
@@ -40,5 +43,43 @@ class CronSchedulesJpaE2eTest extends AbstractJpaE2eTest {
 
         assertThat(cronScheduleRepository.findAll()).containsExactly(
                 new CronFileSchedule("/srv/defs", 0, "cron-vars", new CronSchedule("@daily")));
+    }
+
+    /**
+     * E2E-CRON-04 — a schedule created through the engine is a row of its own (source {@code ui}) that no
+     * import replaces, until a file declares its id: then the file's entry is the schedule, the row is
+     * gone and the pause, kept by id in {@code cron_schedule_pause}, carries over. Gone from the file,
+     * it is gone with its pause.
+     */
+    @Test
+    void engineCreatedSchedulesAndPausesAreStoredAndHandedOverToTheFile() {
+        assertThat(schedulePauseRepository).isInstanceOf(io.mateu.workflow.infra.out.persistence.JpaSchedulePauseRepository.class);
+        scheduleService.create(new io.mateu.workflow.application.services.ScheduleService.ScheduleDraft(
+                "nightly", "cron-vars", "0 0 9 * * *", "UTC", Map.of("region", "EMEA")));
+        scheduleService.create(new io.mateu.workflow.application.services.ScheduleService.ScheduleDraft(
+                "adhoc", "cron-vars", "@daily", null, null));
+        scheduleService.pause("nightly", "ops");
+
+        assertThat(cronScheduleRepository.findAll()).filteredOn(s -> "ui".equals(s.source()))
+                .extracting(s -> s.schedule().id()).containsExactlyInAnyOrder("nightly", "adhoc");
+        assertThat(scheduleService.get("nightly").variables()).containsExactly(Map.entry("region", "EMEA"));
+        assertThat(schedulePauseRepository.findById("nightly")).hasValueSatisfying(p -> assertThat(p.pausedBy()).isEqualTo("ops"));
+
+        var git = "https://git.example.com/defs.git";
+        cronScheduleImporter.importSource(git, List.of(new io.mateu.workflow.application.services.CronScheduleImporter.CronFile(
+                "cron.yaml", scheduleService.exportYaml("nightly").replace("0 0 9 * * *", "0 0 21 * * *")
+                        .getBytes(java.nio.charset.StandardCharsets.UTF_8))));
+
+        var owned = scheduleService.get("nightly");
+        assertThat(owned.source()).isEqualTo(git);
+        assertThat(owned.cron()).isEqualTo("0 0 21 * * *");
+        assertThat(owned.paused()).isTrue();
+        assertThat(cronScheduleRepository.findAll()).filteredOn(s -> "ui".equals(s.source()))
+                .extracting(s -> s.schedule().id()).containsExactly("adhoc");
+
+        cronScheduleImporter.importSource(git, List.of());
+
+        assertThat(scheduleService.list(null, null)).extracting(v -> v.id()).doesNotContain("nightly").contains("adhoc");
+        assertThat(schedulePauseRepository.findAll()).isEmpty();
     }
 }
