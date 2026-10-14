@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Scheduled starts with parameters.** A definition can declare `schedules: [{cron, zone?, variables?}]` — several cron schedules, each read in its own IANA zone (default `workflow.time.zone`) and starting the process with its own initial variables. `cronExpression` keeps working unchanged as the shorthand for one schedule without variables (same JVM zone, same business key), and both may coexist.
+- **`cron.yaml`.** The same schedules, naming the workflow they start (`[{cron, workflow, zone?, variables?}]`, or that list under a single `schedules:` key), can live in a `cron.yaml`/`cron.yml` next to the definitions: `classpath:/workflows/cron.yaml`, an imported directory or a git repository. It is never read as a workflow definition. Each import replaces its source's entries, so a removed entry stops firing; an entry with an invalid cron or zone, an unknown key, or an unknown workflow is logged and skipped. Entries live in memory with `workflow.persistence=memory` and in the new `cron_schedule` table with `jpa` (migration V37, which also adds `workflow_definition_entity.schedules_json`), so every pod's scheduler reads the same set.
+- Business keys stay deterministic and distinct per schedule — `<id>-cron-s<index>-<occurrence with offset>` for a definition schedule, `<id>-cron-f<hash of cron, zone, variables>-<occurrence with offset>` for a `cron.yaml` entry — and the last fire is tracked per schedule, not per definition. Missed occurrences are still skipped, not replayed; editing a schedule restarts its clock instead of replaying the new expression.
+- Validation shared by the engine and the Maven plugin (`ScheduleRules` in `definition-analysis`): invalid cron or zone in `schedules` rejects the definition; the plugin also validates `cron.yaml` (new `cron-schema.json`) and fails on entries naming a workflow not defined in the workflows directory. The VS Code and IntelliJ plugins validate `cron.yaml`/`cron.yml` against `cron-schema.json`.
+- The definition detail page has a **Schedules** tab: every schedule of the workflow (`cronExpression`, `schedules`, `cron.yaml` entries) with its zone, variables and next start.
+
+### Changed
+- A file named `cron.yaml` or `cron.yml` under `workflows/` (or an imported directory) is no longer read as a workflow definition. Rename a definition that used that name.
+
 ### Fixed
 - **A task's own page, `/forms/task/{id}`, opens again.** Since the Mateu 3.0-alpha.331 bump turned its `@Route` into `@UI`, the page was an app of its own at the literal path `/forms/task/:_taskId`, and the route inside `/_forms` answered "Not found." — the tasks list's Run led nowhere and a task could not be claimed or completed from the UI. The route is now registered in Mateu's route registry (`FormsRoutes`), with the tasks list's, so both answer through either front door of the pod (`/_forms` and `/_forms-admin`).
 - **Claiming a task claims it for the caller.** The task page wrote `miguel` as the assignee of every task it claimed, so Complete — enabled only for the assignee — was nobody's to press. It now takes the signed-in user, does not take a task already claimed by someone else, and refuses a completion from anyone but the assignee (as Tasks v2 already did).

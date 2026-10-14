@@ -12,6 +12,10 @@ new instances, cron included, are created born-`PAUSED`; in the schema, default 
 only so exports round-trip),
 `draftOfId?`, `limitConcurrentExecutions?`, `maxConcurrentExecutions?`, `enqueueOnLimit?`,
 `cronExpression?` (Spring cron: start a new instance per occurrence, multi-pod safe),
+`schedules?` (`[{cron, zone?, variables?: {name: value}}]` — several scheduled starts, each with an
+IANA zone (default `workflow.time.zone`) and initial variables; coexists with `cronExpression`.
+Entries may instead live in `cron.yaml` beside the definitions — `[{cron, workflow, zone?, variables?}]`,
+never read as a definition; unknown `workflow` → logged and skipped),
 `defaultMaxStepExecutions?` (validated metadata, not enforced at runtime today),
 `processLock?` (`{name?, key}` — serialize instances by a JEXL key),
 `syncInvocation?` (`{enabled, onFailure: REPLY_IMMEDIATELY|REPLY_AFTER_COMPENSATION, onLockBusy: WAIT|FAIL, defaultDeadlineMs}` —
