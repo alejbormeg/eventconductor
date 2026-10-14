@@ -108,6 +108,12 @@
         <artifactId>postgresql</artifactId>
         <version>42.7.13</version>
       </dependency>
+      <!-- CVE-2026-106451 (insecure temp file → code execution), via kafka-clients 4.2.1. -->
+      <dependency>
+        <groupId>at.yawk.lz4</groupId>
+        <artifactId>lz4-java</artifactId>
+        <version>1.11.4</version>
+      </dependency>
       <dependency>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-dependencies</artifactId>
