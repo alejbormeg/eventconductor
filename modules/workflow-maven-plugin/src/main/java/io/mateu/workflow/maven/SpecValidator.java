@@ -200,6 +200,20 @@ public class SpecValidator {
             schedules.forEach(schedule -> scheduleIds.add(text(schedule, "id")));
             violations.addAll(io.mateu.workflow.analysis.ScheduleRules.duplicateIdViolations(scheduleIds, "schedules"));
         }
+        // Event triggers: the engine's own EventTriggerRules, then their filter and templates.
+        JsonNode triggers = wf.get("triggers");
+        if (triggers != null && triggers.isArray()) {
+            var triggerIds = new ArrayList<String>();
+            for (int i = 0; i < triggers.size(); i++) {
+                JsonNode trigger = triggers.get(i);
+                String where = "triggers[" + i + "]";
+                triggerIds.add(text(trigger, "id"));
+                violations.addAll(io.mateu.workflow.analysis.EventTriggerRules.triggerViolations(
+                        text(trigger, "id"), text(trigger, "destination"), text(trigger, "type"), where));
+                checkEventReading(trigger, "businessKey", where, violations);
+            }
+            violations.addAll(io.mateu.workflow.analysis.EventTriggerRules.duplicateIdViolations(triggerIds, "triggers"));
+        }
 
         JsonNode steps = wf.get("steps");
         if (steps == null || !steps.isArray()) {
@@ -325,6 +339,14 @@ public class SpecValidator {
             }
             checkMoment(step.get("until"), "TIMER step '" + id + "' until", true, violations);
             checkMoment(step.get("deadline"), "Step '" + id + "' deadline", false, violations);
+            JsonNode onEvent = step.get("onEvent");
+            if (onEvent != null && onEvent.isObject()) {
+                String where = "Step '" + id + "' onEvent";
+                violations.addAll(io.mateu.workflow.analysis.EventTriggerRules.onEventPlacementViolations(id, type, true));
+                violations.addAll(io.mateu.workflow.analysis.EventTriggerRules.sourceViolations(
+                        text(onEvent, "destination"), text(onEvent, "type"), where));
+                checkEventReading(onEvent, "correlationKey", where, violations);
+            }
             JsonNode event = step.get("event");
             if (event != null && event.isObject()) {
                 checkTemplate(event.get("payload"), "step '" + id + "' event.payload", violations);
@@ -369,6 +391,16 @@ public class SpecValidator {
             checkTemplate(moment.isTextual() ? moment : moment.get("date"), where + " date", violations);
             checkTemplate(moment.get("zone"), where + " zone", violations);
         }
+    }
+
+    /** A trigger's or an onEvent's filter (JEXL) and its text template and variable templates. */
+    private void checkEventReading(JsonNode source, String textTemplateField, String where, List<String> violations) {
+        String filter = text(source, "filter");
+        if (isSet(filter)) {
+            checkJexl(filter, where + " filter", violations);
+        }
+        checkTemplate(source.get(textTemplateField), where + " " + textTemplateField, violations);
+        checkTemplate(source.get("variables"), where + " variables", violations);
     }
 
     private void checkTemplate(JsonNode template, String where, List<String> violations) {
