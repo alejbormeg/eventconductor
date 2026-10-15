@@ -52,7 +52,8 @@ public class WorkflowDefinitionDBRepository implements WorkflowDefinitionReposit
                 .withLayout(layoutFromJson(entity.getLayoutJson()))
                 .withProcessLock(processLockFromJson(entity.getProcessLockJson()))
                 .withSyncInvocation(syncInvocationFromJson(entity.getSyncInvocationJson()))
-                .withSchedules(schedulesFromJson(entity.getSchedulesJson()));
+                .withSchedules(schedulesFromJson(entity.getSchedulesJson()))
+                .withTriggers(triggersFromJson(entity.getTriggersJson()));
     }
 
     /** The stored process-level lock, or null when the definition declares none (read leniently). */
@@ -86,6 +87,18 @@ public class WorkflowDefinitionDBRepository implements WorkflowDefinitionReposit
         }
         try {
             return LAYOUT_MAPPER.readValue(json, new TypeReference<List<CronSchedule>>() {});
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /** The stored event triggers, or null when there are none (read leniently, like the schedules). */
+    private static List<io.mateu.workflow.domain.aggregates.EventTrigger> triggersFromJson(String json) {
+        if (json == null || json.isBlank()) {
+            return null;
+        }
+        try {
+            return LAYOUT_MAPPER.readValue(json, new TypeReference<List<io.mateu.workflow.domain.aggregates.EventTrigger>>() {});
         } catch (Exception e) {
             return null;
         }
@@ -143,7 +156,8 @@ public class WorkflowDefinitionDBRepository implements WorkflowDefinitionReposit
                 layoutToJson(workflowDefinition.layout()),
                 processLockToJson(workflowDefinition.processLock()),
                 workflowDefinition.syncInvocation() == null ? null : toJson(workflowDefinition.syncInvocation()),
-                workflowDefinition.schedules() == null ? null : toJson(workflowDefinition.schedules())
+                workflowDefinition.schedules() == null ? null : toJson(workflowDefinition.schedules()),
+                workflowDefinition.triggers() == null ? null : toJson(workflowDefinition.triggers())
         ));
         return workflowDefinition.id();
     }

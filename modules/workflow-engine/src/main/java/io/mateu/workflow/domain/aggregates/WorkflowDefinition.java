@@ -127,7 +127,15 @@ public record WorkflowDefinition(
          */
         @Hidden
         @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
-        List<CronSchedule> schedules
+        List<CronSchedule> schedules,
+        /**
+         * Event triggers: the domain events that start a process of this definition (see
+         * {@link EventTrigger}). Null — the default — means none. Rendered by the detail view, not by
+         * the generic form.
+         */
+        @Hidden
+        @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+        List<EventTrigger> triggers
 ) implements Identifiable, SearchableText, LookupOptionsSupplier, VisibilitySupplier {
 
     /**
@@ -150,6 +158,24 @@ public record WorkflowDefinition(
         layout = layout == null ? null : Map.copyOf(layout);
         // Null kept apart from empty for the same reason as the layout: only null is omitted on export.
         schedules = schedules == null ? null : List.copyOf(schedules);
+        triggers = triggers == null ? null : List.copyOf(triggers);
+    }
+
+    /**
+     * The canonical shape before event triggers existed, so every caller of the full constructor
+     * keeps compiling and the definition declares no {@code triggers}.
+     */
+    public WorkflowDefinition(String id, String name, int version, String description,
+                              boolean limitConcurrentExecutions, int maxConcurrentExecutions,
+                              boolean enqueueOnLimit, String cronExpression, int defaultMaxStepExecutions,
+                              List<Step> steps, boolean paused, WorkflowStatus declaredStatus,
+                              WorkflowStatus runtimeStatus, List<String> requiredScopes,
+                              List<String> requiredRoles, int maxSteps, Map<String, NodePosition> layout,
+                              ProcessLock processLock, SyncInvocation syncInvocation, List<CronSchedule> schedules) {
+        this(id, name, version, description, limitConcurrentExecutions, maxConcurrentExecutions,
+                enqueueOnLimit, cronExpression, defaultMaxStepExecutions, steps, paused, declaredStatus,
+                runtimeStatus, requiredScopes, requiredRoles, maxSteps, layout, processLock, syncInvocation,
+                schedules, null);
     }
 
     /**
@@ -276,21 +302,21 @@ public record WorkflowDefinition(
     public WorkflowDefinition withPaused(boolean newPaused) {
         return new WorkflowDefinition(id, name, version, description, limitConcurrentExecutions,
                 maxConcurrentExecutions, enqueueOnLimit, cronExpression, defaultMaxStepExecutions,
-                steps, newPaused, declaredStatus, runtimeStatus, requiredScopes, requiredRoles, maxSteps, layout, processLock, syncInvocation, schedules);
+                steps, newPaused, declaredStatus, runtimeStatus, requiredScopes, requiredRoles, maxSteps, layout, processLock, syncInvocation, schedules, triggers);
     }
 
     /** Returns a copy with a different runtime status — what an operator decided. */
     public WorkflowDefinition withRuntimeStatus(WorkflowStatus newStatus) {
         return new WorkflowDefinition(id, name, version, description, limitConcurrentExecutions,
                 maxConcurrentExecutions, enqueueOnLimit, cronExpression, defaultMaxStepExecutions,
-                steps, paused, declaredStatus, newStatus, requiredScopes, requiredRoles, maxSteps, layout, processLock, syncInvocation, schedules);
+                steps, paused, declaredStatus, newStatus, requiredScopes, requiredRoles, maxSteps, layout, processLock, syncInvocation, schedules, triggers);
     }
 
     /** Returns a copy with a different declared status — what the definition file says. */
     public WorkflowDefinition withDeclaredStatus(WorkflowStatus newStatus) {
         return new WorkflowDefinition(id, name, version, description, limitConcurrentExecutions,
                 maxConcurrentExecutions, enqueueOnLimit, cronExpression, defaultMaxStepExecutions,
-                steps, paused, newStatus, runtimeStatus, requiredScopes, requiredRoles, maxSteps, layout, processLock, syncInvocation, schedules);
+                steps, paused, newStatus, runtimeStatus, requiredScopes, requiredRoles, maxSteps, layout, processLock, syncInvocation, schedules, triggers);
     }
 
     /** Kept for callers written against the boolean API. */
@@ -307,21 +333,21 @@ public record WorkflowDefinition(
     public WorkflowDefinition withRuntimeStateOf(WorkflowDefinition existing) {
         return new WorkflowDefinition(id, name, version, description, limitConcurrentExecutions,
                 maxConcurrentExecutions, enqueueOnLimit, cronExpression, defaultMaxStepExecutions,
-                steps, existing.paused(), declaredStatus, existing.runtimeStatus(), requiredScopes, requiredRoles, maxSteps, layout, processLock, syncInvocation, schedules);
+                steps, existing.paused(), declaredStatus, existing.runtimeStatus(), requiredScopes, requiredRoles, maxSteps, layout, processLock, syncInvocation, schedules, triggers);
     }
 
     /** Returns a copy carrying a different step list, every other field unchanged. */
     public WorkflowDefinition withSteps(List<Step> newSteps) {
         return new WorkflowDefinition(id, name, version, description, limitConcurrentExecutions,
                 maxConcurrentExecutions, enqueueOnLimit, cronExpression, defaultMaxStepExecutions,
-                newSteps, paused, declaredStatus, runtimeStatus, requiredScopes, requiredRoles, maxSteps, layout, processLock, syncInvocation, schedules);
+                newSteps, paused, declaredStatus, runtimeStatus, requiredScopes, requiredRoles, maxSteps, layout, processLock, syncInvocation, schedules, triggers);
     }
 
     /** Returns a copy carrying the given per-process step cap ({@code maxSteps}). */
     public WorkflowDefinition withMaxSteps(int newMaxSteps) {
         return new WorkflowDefinition(id, name, version, description, limitConcurrentExecutions,
                 maxConcurrentExecutions, enqueueOnLimit, cronExpression, defaultMaxStepExecutions,
-                steps, paused, declaredStatus, runtimeStatus, requiredScopes, requiredRoles, newMaxSteps, layout, processLock, syncInvocation, schedules);
+                steps, paused, declaredStatus, runtimeStatus, requiredScopes, requiredRoles, newMaxSteps, layout, processLock, syncInvocation, schedules, triggers);
     }
 
     /**
@@ -335,7 +361,7 @@ public record WorkflowDefinition(
         return new WorkflowDefinition(id, name, version, description, limitConcurrentExecutions,
                 maxConcurrentExecutions, enqueueOnLimit, cronExpression, defaultMaxStepExecutions,
                 steps, paused, declaredStatus, runtimeStatus, requiredScopes, requiredRoles, maxSteps,
-                newLayout, processLock, syncInvocation, schedules);
+                newLayout, processLock, syncInvocation, schedules, triggers);
     }
 
     /**
@@ -349,7 +375,7 @@ public record WorkflowDefinition(
         return new WorkflowDefinition(id, name, version, description, limitConcurrentExecutions,
                 maxConcurrentExecutions, enqueueOnLimit, cronExpression, defaultMaxStepExecutions,
                 steps, paused, declaredStatus, runtimeStatus, requiredScopes, requiredRoles, maxSteps,
-                layout, newProcessLock, syncInvocation, schedules);
+                layout, newProcessLock, syncInvocation, schedules, triggers);
     }
 
     /**
@@ -360,7 +386,7 @@ public record WorkflowDefinition(
         return new WorkflowDefinition(id, name, version, description, limitConcurrentExecutions,
                 maxConcurrentExecutions, enqueueOnLimit, cronExpression, defaultMaxStepExecutions,
                 steps, paused, declaredStatus, runtimeStatus, requiredScopes, requiredRoles, maxSteps,
-                layout, processLock, newSyncInvocation, schedules);
+                layout, processLock, newSyncInvocation, schedules, triggers);
     }
 
     /**
@@ -371,14 +397,44 @@ public record WorkflowDefinition(
         return new WorkflowDefinition(id, name, version, description, limitConcurrentExecutions,
                 maxConcurrentExecutions, enqueueOnLimit, cronExpression, defaultMaxStepExecutions,
                 steps, paused, declaredStatus, runtimeStatus, requiredScopes, requiredRoles, maxSteps,
-                layout, processLock, syncInvocation, newSchedules);
+                layout, processLock, syncInvocation, newSchedules, triggers);
+    }
+
+    /**
+     * Returns a copy carrying different event triggers — chained wherever a definition is rebuilt
+     * through a narrower constructor, exactly like {@link #withSchedules}.
+     */
+    public WorkflowDefinition withTriggers(List<EventTrigger> newTriggers) {
+        return new WorkflowDefinition(id, name, version, description, limitConcurrentExecutions,
+                maxConcurrentExecutions, enqueueOnLimit, cronExpression, defaultMaxStepExecutions,
+                steps, paused, declaredStatus, runtimeStatus, requiredScopes, requiredRoles, maxSteps,
+                layout, processLock, syncInvocation, schedules, newTriggers);
+    }
+
+    /**
+     * Each trigger with its effective id — its own, or the one derived from its type
+     * ({@code EventTriggerRules.effectiveIds}) — in declaration order; empty when there are none.
+     */
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    public List<EventTrigger> identifiedTriggers() {
+        if (triggers == null || triggers.isEmpty()) {
+            return List.of();
+        }
+        var ids = io.mateu.workflow.analysis.EventTriggerRules.effectiveIds(
+                triggers.stream().map(EventTrigger::id).toList(),
+                triggers.stream().map(EventTrigger::type).toList());
+        var identified = new java.util.ArrayList<EventTrigger>();
+        for (int i = 0; i < triggers.size(); i++) {
+            identified.add(triggers.get(i).withId(ids.get(i)));
+        }
+        return identified;
     }
 
     /** Returns a copy carrying the given (engine-assigned) version number. */
     public WorkflowDefinition withVersion(int newVersion) {
         return new WorkflowDefinition(id, name, newVersion, description, limitConcurrentExecutions,
                 maxConcurrentExecutions, enqueueOnLimit, cronExpression, defaultMaxStepExecutions,
-                steps, paused, declaredStatus(), runtimeStatus(), requiredScopes, requiredRoles, maxSteps, layout, processLock, syncInvocation, schedules);
+                steps, paused, declaredStatus(), runtimeStatus(), requiredScopes, requiredRoles, maxSteps, layout, processLock, syncInvocation, schedules, triggers);
     }
 
     // ── Detail-view lifecycle buttons (conditional on state via VisibilitySupplier) ──
@@ -456,12 +512,51 @@ public record WorkflowDefinition(
     }
 
     /**
+     * Each event trigger must name a destination and a type, an id (optional) that is a valid one and
+     * not repeated, and templates and a filter that parse — the rules the Maven plugin applies too
+     * ({@code EventTriggerRules}). Whether the destination is configured is not judged here: the
+     * engine can be configured after a definition is imported.
+     */
+    private void checkTriggers() {
+        if (triggers == null) return;
+        var violations = new java.util.ArrayList<String>();
+        for (int i = 0; i < triggers.size(); i++) {
+            var trigger = triggers.get(i);
+            var where = "triggers[" + i + "]";
+            violations.addAll(io.mateu.workflow.analysis.EventTriggerRules.triggerViolations(
+                    trigger.id(), trigger.destination(), trigger.type(), where));
+            violations.addAll(eventTemplateProblems(trigger.filter(), trigger.businessKey(), trigger.variables(), where));
+        }
+        violations.addAll(io.mateu.workflow.analysis.EventTriggerRules.duplicateIdViolations(
+                triggers.stream().map(EventTrigger::id).toList(), "triggers"));
+        if (!violations.isEmpty()) {
+            throw new IllegalStateException(String.join("; ", violations) + ".");
+        }
+    }
+
+    /** The filter, a text template and the variable templates of a trigger or an onEvent, parsed. */
+    static List<String> eventTemplateProblems(String filter, String textTemplate, Map<String, Object> variables, String where) {
+        var problems = new java.util.ArrayList<String>();
+        if (filter != null) {
+            problems.addAll(io.mateu.workflow.template.Templates.problems("${" + filter + "}", where + " filter"));
+        }
+        if (textTemplate != null) {
+            problems.addAll(io.mateu.workflow.template.Templates.problems(textTemplate, where));
+        }
+        if (variables != null) {
+            problems.addAll(io.mateu.workflow.template.Templates.problems(variables, where + " variables"));
+        }
+        return problems;
+    }
+
+    /**
      * Checks domain invariants that cannot be expressed as field-level annotations.
      *
      * @throws IllegalStateException if any invariant is violated.
      */
     public void checkInvariants() {
         checkSchedules();
+        checkTriggers();
         if (steps == null) return;
         // Reachability below is judged against these: a compensation is declared on the step it
         // undoes and started by the rollback pipeline, so it needs no way in of its own.
@@ -544,6 +639,18 @@ public record WorkflowDefinition(
                 if (step.correlationExpression() == null || step.correlationExpression().isBlank()) {
                     throw new IllegalStateException(
                             "Message step '" + step.id() + "' must define a correlationExpression.");
+                }
+            }
+            if (step.onEvent() != null) {
+                var problems = new java.util.ArrayList<>(io.mateu.workflow.analysis.EventTriggerRules
+                        .onEventPlacementViolations(step.id(), step.type() == null ? null : step.type().name(), true));
+                var where = "Step '" + step.id() + "' onEvent";
+                problems.addAll(io.mateu.workflow.analysis.EventTriggerRules.sourceViolations(
+                        step.onEvent().destination(), step.onEvent().type(), where));
+                problems.addAll(eventTemplateProblems(step.onEvent().filter(), step.onEvent().correlationKey(),
+                        step.onEvent().variables(), where));
+                if (!problems.isEmpty()) {
+                    throw new IllegalStateException(String.join(" ", problems));
                 }
             }
             if (StepType.LOCK.equals(step.type()) || StepType.UNLOCK.equals(step.type())) {

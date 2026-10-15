@@ -103,6 +103,10 @@ public class WorkflowDefinitionVersioningService {
         if (d.schedules() != null) {
             canonical.put("schedules", io.mateu.core.infra.JsonSerializer.toJson(d.schedules()));
         }
+        // Event triggers likewise: what starts the workflow is part of it, and only written when present.
+        if (d.triggers() != null) {
+            canonical.put("triggers", io.mateu.core.infra.JsonSerializer.toJson(d.triggers()));
+        }
         canonical.put("defaultMaxStepExecutions", d.defaultMaxStepExecutions());
         canonical.put("steps", d.steps().stream()
                 .sorted(Comparator.comparing(Step::id, Comparator.nullsLast(Comparator.naturalOrder())))
