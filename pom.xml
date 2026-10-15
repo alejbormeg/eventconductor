@@ -47,6 +47,7 @@
       <module>apps/rule-standalone-app</module>
       <module>apps/worker-standalone-app</module>
       <module>apps/http-worker-standalone-app</module>
+      <module>apps/llm-worker-standalone-app</module>
       <module>apps/dev-app</module>
       <module>modules/shared</module>
       <module>modules/worker-api</module>
@@ -55,6 +56,7 @@
       <module>modules/worker-codegen</module>
       <module>modules/definition-analysis</module>
       <module>modules/worker-http</module>
+      <module>modules/worker-llm</module>
       <module>parents/task-module-parent</module>
       <module>parents/task-service-parent</module>
       <module>examples/greetings-tasks</module>
@@ -136,6 +138,17 @@
         <dependency>
             <groupId>org.springframework.ai</groupId>
             <artifactId>spring-ai-model</artifactId>
+            <version>2.0.1</version>
+        </dependency>
+        <!-- The LLM_CALL providers (worker-llm); same release as spring-ai-model. -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-anthropic</artifactId>
+            <version>2.0.1</version>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-openai</artifactId>
             <version>2.0.1</version>
         </dependency>
         <!-- Spring AI 2.0's MCP server pulls json-schema-validator 3.x; align the engine's

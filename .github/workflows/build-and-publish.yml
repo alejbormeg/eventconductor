@@ -167,6 +167,17 @@ jobs:
             ${{ secrets.DOCKERHUB_USERNAME }}/http-worker-standalone-app:${{ env.RELEASE_VERSION }}
             ${{ secrets.DOCKERHUB_USERNAME }}/http-worker-standalone-app:latest
 
+      # The model egress worker: serves LLM_CALL steps from the llm-calls topic.
+      - name: Build llm-worker image
+        uses: docker/build-push-action@v7
+        with:
+          context: apps/llm-worker-standalone-app
+          file: apps/llm-worker-standalone-app/Dockerfile.ci
+          load: true
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/llm-worker-standalone-app:${{ env.RELEASE_VERSION }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/llm-worker-standalone-app:latest
+
       - name: Scan orchestrator image with Trivy
         uses: aquasecurity/trivy-action@master
         with:
@@ -207,6 +218,14 @@ jobs:
           exit-code: '1'
           ignore-unfixed: true
 
+      - name: Scan llm-worker image with Trivy
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ secrets.DOCKERHUB_USERNAME }}/llm-worker-standalone-app:${{ env.RELEASE_VERSION }}
+          severity: CRITICAL,HIGH
+          exit-code: '1'
+          ignore-unfixed: true
+
       - name: Scan projector image with Trivy
         uses: aquasecurity/trivy-action@master
         with:
@@ -215,7 +234,7 @@ jobs:
           exit-code: '1'
           ignore-unfixed: true
 
-      # Every image is pushed here, and only here, once all six have passed the scan.
+      # Every image is pushed here, and only here, once all seven have passed the scan.
       #
       # They used to be pushed as they were built, with the scans afterwards. That made the gate a
       # report: v2.2.0 published five images and *then* failed on the worker's 4 CRITICAL CVEs, so
@@ -227,7 +246,7 @@ jobs:
       # moving for some images and not others is worse than it not moving at all.
       - name: Push the images, now that every one of them is clean
         run: |
-          for app in orchestrator forms rule projector worker http-worker; do
+          for app in orchestrator forms rule projector worker http-worker llm-worker; do
             image="${{ secrets.DOCKERHUB_USERNAME }}/${app}-standalone-app"
             docker push "${image}:${{ env.RELEASE_VERSION }}"
             docker push "${image}:latest"
