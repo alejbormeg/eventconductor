@@ -398,6 +398,35 @@ class SpecValidatorTest {
     }
 
     @Test
+    void llmCallsAreCheckedByTheSharedRulesAndTheirTemplatesParsed() throws Exception {
+        var good = json("""
+                {"id": "l", "name": "L", "version": 1, "steps": [
+                  {"id": "start", "type": "START", "name": "Start"},
+                  {"id": "triage", "type": "LLM_CALL", "name": "Triage", "preconditionStepId": "start",
+                   "llm": {"connection": "claude", "model": "claude-sonnet-5-5", "system": "You triage.",
+                           "prompt": "${guest} wrote: ${complaint}", "maxTokens": 512,
+                           "responseSchema": {"type": "object", "required": ["category"]},
+                           "output": {"category": "json.category"}, "usageVariable": "usage"}}
+                ]}
+                """);
+        assertThat(validator.validate(SpecValidator.Kind.WORKFLOW, good)).isEmpty();
+        var bad = json("""
+                {"id": "l", "name": "L", "version": 1, "steps": [
+                  {"id": "start", "type": "START", "name": "Start"},
+                  {"id": "triage", "type": "LLM_CALL", "name": "Triage", "preconditionStepId": "start",
+                   "llm": {"connection": "claude", "prompt": "${guest +} ${secret:KEY}", "system": "${(",
+                           "output": {"category": "json.("}}},
+                  {"id": "nollm", "type": "LLM_CALL", "name": "No block", "preconditionStepId": "start"}
+                ]}
+                """);
+        var violations = validator.validate(SpecValidator.Kind.WORKFLOW, bad);
+        assertThat(violations).anyMatch(v -> v.contains("must never reach a prompt"));
+        assertThat(violations).anyMatch(v -> v.contains("llm.system"));
+        assertThat(violations).anyMatch(v -> v.contains("llm.output.category"));
+        assertThat(violations).anyMatch(v -> v.contains("'nollm' must define an llm block"));
+    }
+
+    @Test
     void momentsAreCheckedByTheSharedRules() throws Exception {
         var good = json("""
                 {"id": "m", "name": "M", "version": 1, "steps": [

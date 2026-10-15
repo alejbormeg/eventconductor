@@ -569,6 +569,12 @@ public record WorkflowDefinition(
                     throw new IllegalStateException(String.join(" ", problems));
                 }
             }
+            if (StepType.LLM_CALL.equals(step.type())) {
+                var problems = io.mateu.workflow.domain.services.LlmRequestRenderer.problems(step);
+                if (!problems.isEmpty()) {
+                    throw new IllegalStateException(String.join(" ", problems));
+                }
+            }
             if (StepType.PUBLISH_EVENT.equals(step.type())) {
                 var event = step.event();
                 if (event == null || event.destination() == null || event.destination().isBlank()
@@ -630,7 +636,7 @@ public record WorkflowDefinition(
     /** The steps that wait for something and so can miss a deadline. */
     private static boolean canTimeOut(StepType type) {
         return type != null && switch (type) {
-            case ACTION, USER_TASK, RULE, WAIT_FOR_MESSAGE, PROCESS, HTTP_CALL -> true;
+            case ACTION, USER_TASK, RULE, WAIT_FOR_MESSAGE, PROCESS, HTTP_CALL, LLM_CALL -> true;
             default -> false;
         };
     }

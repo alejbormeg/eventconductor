@@ -303,6 +303,26 @@ public class SpecValidator {
                     }
                 }
             }
+            if ("LLM_CALL".equals(type)) {
+                JsonNode llm = step.get("llm");
+                @SuppressWarnings("unchecked")
+                var llmMap = llm == null || !llm.isObject() ? null
+                        : (java.util.Map<String, Object>) TEMPLATE_READER.convertValue(llm, java.util.Map.class);
+                violations.addAll(io.mateu.workflow.analysis.LlmCallRules.problems(llmMap, "LLM_CALL step '" + id + "'"));
+                if (llmMap != null) {
+                    for (var field : List.of("system", "prompt")) {
+                        var value = llm.get(field);
+                        if (value != null && !value.toString().contains("${secret:")) {
+                            checkTemplate(value, "step '" + id + "' llm." + field, violations);
+                        }
+                    }
+                    JsonNode output = llm.get("output");
+                    if (output != null && output.isObject()) {
+                        output.properties().forEach(entry -> checkJexl(entry.getValue().asText(),
+                                "step '" + id + "' llm.output." + entry.getKey(), violations));
+                    }
+                }
+            }
             checkMoment(step.get("until"), "TIMER step '" + id + "' until", true, violations);
             checkMoment(step.get("deadline"), "Step '" + id + "' deadline", false, violations);
             JsonNode event = step.get("event");

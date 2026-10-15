@@ -40,7 +40,15 @@ public enum StepType {
      * to the built-in {@code http-call} worker task, so timeouts, retries, compensation and cancellation
      * work as for any worker step; a 4xx is not retried by default.
      */
-    HTTP_CALL;
+    HTTP_CALL,
+
+    /**
+     * Ask a language model ({@code llm}: a named connection, templated system prompt and prompt, an
+     * optional response schema, answer → variables). The engine renders the prompts and dispatches them
+     * to the built-in {@code llm-call} worker task, so timeouts, retries, compensation and cancellation
+     * work as for any worker step; a provider 4xx is not retried.
+     */
+    LLM_CALL;
 
     /**
      * Accepts the pre-rename alias {@code MESSAGE} (now {@code WAIT_FOR_MESSAGE}) so that the
