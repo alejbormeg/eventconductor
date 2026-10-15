@@ -98,7 +98,10 @@ public class StartStepExecutionUseCase {
                 stepExecution.getVariables().stream()
                         .map(variable -> new Variable(variable.name(), variable.value()))
                         .toList()
-        ), step.topic());
+        // StepExecution.topic(), not the step's own field: it knows the default topics of the built-in
+        // tasks (http-calls, llm-calls), the same ones cancellation is sent to. With step.topic() an
+        // HTTP_CALL without a topic went to `downstream`, where no http worker listens.
+        ), stepExecution.topic());
     }
 
 }
