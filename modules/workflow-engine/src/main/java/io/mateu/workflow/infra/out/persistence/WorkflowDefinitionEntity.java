@@ -97,4 +97,11 @@ public class WorkflowDefinitionEntity {
     @Column(columnDefinition = "TEXT")
     String schedulesJson;
 
+    /**
+     * The definition's event {@code triggers} as the {@code .ec} file carries them, or null when it
+     * declares none. JSON, like {@code schedulesJson}.
+     */
+    @Column(columnDefinition = "TEXT")
+    String triggersJson;
+
 }

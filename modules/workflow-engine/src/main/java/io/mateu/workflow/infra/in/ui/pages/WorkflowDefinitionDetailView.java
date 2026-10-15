@@ -73,6 +73,8 @@ public class WorkflowDefinitionDetailView implements VisibilitySupplier {
     final ObjectProvider<WorkflowDefinitionVersionQueryService> versionQueryProvider;
     /** Every schedule targeting this definition — its own, cron.yaml entries, the ones created on the Schedules page. */
     final ObjectProvider<io.mateu.workflow.application.services.ScheduleService> scheduleServiceProvider;
+    /** This definition's event triggers, with their pause state. */
+    final ObjectProvider<io.mateu.workflow.application.services.EventTriggerService> eventTriggerServiceProvider;
 
     @Hidden
     String id;
@@ -143,6 +145,17 @@ public class WorkflowDefinitionDetailView implements VisibilitySupplier {
     @Hidden
     boolean schedulesAvailable;
 
+    // ── "Triggers" tab: the domain events that start this workflow — destination and its topic, type,
+    //    filter, business key, variables and whether each starts processes now (paused and resumed on
+    //    Workflow → Event triggers; what the events did is on Workflow → Received events). Hidden when
+    //    the definition declares none. ─────────────────────────────────────────────────────────────────
+    @Tab("Triggers")
+    @Label("")
+    List<io.mateu.workflow.infra.in.ui.pages.events.TriggerRow> triggers;
+
+    @Hidden
+    boolean triggersAvailable;
+
     // ── "Versions" tab: the engine-recorded version history of this definition, one row per version
     //    with its creation date and per-version process stats (running/completed/total), plus a
     //    legacy bucket. JPA-only; hidden in memory mode (see isHidden). ─────────────────────────────
@@ -175,6 +188,8 @@ public class WorkflowDefinitionDetailView implements VisibilitySupplier {
         if (schedulesAvailable && "—".equals(cron)) {
             this.cron = schedules.size() + " schedule(s) — see the Schedules tab";
         }
+        this.triggers = triggerRows(def.id());
+        this.triggersAvailable = !triggers.isEmpty();
         this.maxStepExecutions = def.defaultMaxStepExecutions() == 0
                 ? "unbounded" : String.valueOf(def.defaultMaxStepExecutions());
         this.paused = def.paused() ? "yes — processes are held" : "no";
@@ -225,6 +240,16 @@ public class WorkflowDefinitionDetailView implements VisibilitySupplier {
             return List.of();
         }
         return service.list(definitionId, null).stream().map(ScheduleRow::of).toList();
+    }
+
+    /** Every event trigger of the definition {@code definitionId}, in declaration order. */
+    List<io.mateu.workflow.infra.in.ui.pages.events.TriggerRow> triggerRows(String definitionId) {
+        var service = eventTriggerServiceProvider == null ? null : eventTriggerServiceProvider.getIfAvailable();
+        if (service == null) {
+            return List.of();
+        }
+        return service.list(definitionId, null).stream()
+                .map(io.mateu.workflow.infra.in.ui.pages.events.TriggerRow::of).toList();
     }
 
     /**
@@ -299,6 +324,7 @@ public class WorkflowDefinitionDetailView implements VisibilitySupplier {
             // No version history in memory mode — hide the tab rather than show it empty.
             case "versions" -> !versionsAvailable;
             case "schedules" -> !schedulesAvailable;
+            case "triggers" -> !triggersAvailable;
             default -> false;
         };
     }

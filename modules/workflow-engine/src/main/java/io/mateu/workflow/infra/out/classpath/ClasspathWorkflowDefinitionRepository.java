@@ -79,7 +79,10 @@ public class ClasspathWorkflowDefinitionRepository implements WorkflowDefinition
                                 .withLayout(def.layout())
                                 .withProcessLock(def.processLock())
                                 .withSyncInvocation(def.syncInvocation())
-                                .withSchedules(def.schedules());
+                                .withSchedules(def.schedules())
+                                .withTriggers(def.triggers())
+                                // The narrower constructor above declares ACTIVE: keep what the file says.
+                                .withDeclaredStatus(def.declaredStatus());
                     }
                     def = taskReferenceResolver.resolve(def);
                     definitions.put(def.id(), def);

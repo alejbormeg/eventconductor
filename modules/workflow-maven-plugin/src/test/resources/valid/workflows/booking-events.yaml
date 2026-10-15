@@ -1,0 +1,36 @@
+id: booking-events
+name: Booking onboarding
+version: 1
+# Started by a domain event, beside (or instead of) a cron.
+triggers:
+  - id: on-booking-created
+    destination: bookings
+    type: com.acme.booking.created
+    filter: "data.channel == 'web'"
+    businessKey: "booking-${data.bookingId}"
+    variables:
+      bookingId: "${data.bookingId}"
+      nights: "${data.nights}"
+  - destination: bookings
+    type: com.acme.booking.*
+steps:
+  - id: start
+    type: START
+    name: Start
+  - id: wait-payment
+    type: WAIT_FOR_MESSAGE
+    name: Wait for the payment
+    preconditionStepId: start
+    messageName: payment-captured
+    correlationExpression: bookingId
+    onEvent:
+      destination: payments
+      type: com.acme.payment.captured
+      correlationKey: "${data.bookingId}"
+      filter: "data.amount > 0"
+      variables:
+        paymentId: "${data.paymentId}"
+  - id: end
+    type: END
+    name: End
+    preconditionStepId: wait-payment

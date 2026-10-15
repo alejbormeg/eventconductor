@@ -31,6 +31,55 @@ class SpecValidatorTest {
     void validWorkflowsPass() throws Exception {
         assertThat(validate(SpecValidator.Kind.WORKFLOW, "/valid/workflows/sequential.json")).isEmpty();
         assertThat(validate(SpecValidator.Kind.WORKFLOW, "/valid/workflows/nightly.yaml")).isEmpty();
+        assertThat(validate(SpecValidator.Kind.WORKFLOW, "/valid/workflows/booking-events.yaml")).isEmpty();
+    }
+
+    @Test
+    void eventTriggersAndOnEventAreValidated() throws Exception {
+        var doc = new YAMLMapper().readTree("""
+                name: Bad triggers
+                triggers:
+                  - id: t
+                    destination: bookings
+                    type: com.acme.booking.created
+                    filter: "data.nights >"
+                  - id: t
+                    destination: "book ings"
+                    type: x
+                    businessKey: "${unterminated"
+                steps:
+                  - id: start
+                    type: START
+                    name: Start
+                  - id: act
+                    type: ACTION
+                    name: Act
+                    topic: work
+                    preconditionStepId: start
+                    onEvent:
+                      destination: payments
+                      type: com.acme.payment.captured
+                """);
+        assertThat(validator.validate(SpecValidator.Kind.WORKFLOW, doc))
+                .anySatisfy(v -> assertThat(v).contains("triggers[0] filter"))
+                .anySatisfy(v -> assertThat(v).contains("triggers[1]: 'book ings' is not a valid destination name"))
+                .anySatisfy(v -> assertThat(v).contains("triggers[1] businessKey"))
+                .anySatisfy(v -> assertThat(v).isEqualTo("triggers: trigger id 't' is declared more than once"))
+                .anySatisfy(v -> assertThat(v).contains("Step 'act' declares onEvent, which only a WAIT_FOR_MESSAGE reads"));
+    }
+
+    @Test
+    void aTriggerWithoutATypeFailsTheSchema() throws Exception {
+        var doc = new YAMLMapper().readTree("""
+                name: No type
+                triggers:
+                  - destination: bookings
+                steps:
+                  - id: start
+                    type: START
+                    name: Start
+                """);
+        assertThat(validator.validate(SpecValidator.Kind.WORKFLOW, doc)).anySatisfy(v -> assertThat(v).contains("type"));
     }
 
     @Test

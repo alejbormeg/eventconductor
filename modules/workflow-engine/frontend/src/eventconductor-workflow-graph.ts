@@ -97,6 +97,30 @@ interface WorkflowStep {
     until?: Moment;
     /** A moment by which a waiting step must have finished. */
     deadline?: Moment;
+    /** WAIT_FOR_MESSAGE only: the domain event that is this step's message. */
+    onEvent?: EventSource;
+}
+
+/** Where a domain event comes from and how it is read: a trigger's or a wait's `onEvent`. */
+interface EventSource {
+    id?: string;
+    destination?: string;
+    type?: string;
+    filter?: string;
+    correlationKey?: string;
+    businessKey?: string;
+}
+
+/** A domain event in words — "com.acme.booking.created ← bookings". */
+function describeEventSource(source: EventSource | undefined): string {
+    if (!source) return "";
+    return (source.type || "event") + " ← " + (source.destination || "?");
+}
+
+/** The ⚡ caption of a WAIT_FOR_MESSAGE fed by a domain event, the event's summary in its panel. */
+function describeEventWait(source: EventSource): string {
+    return describeEventSource(source) + " · key " + (source.correlationKey || "the record key")
+        + (source.filter ? " · if " + source.filter : "");
 }
 
 /** A moment from the process's data: a date template, or {date, offset, at, zone, ifPast}. */
@@ -163,6 +187,8 @@ interface WorkflowDefinition {
      * console and in a colleague's checkout is the same picture.
      */
     layout?: Record<string, NodePos>;
+    /** The domain events that start this workflow (drawn as a ⚡ badge on the START node). */
+    triggers?: EventSource[];
 }
 
 type StepState = "PENDING" | "RUNNING" | "COMPLETED" | "ERROR" | "TIMEOUT" | "CANCELLED" | "COMPENSATED" | "WAITING_ON_LOCK";
@@ -424,7 +450,8 @@ function badgeOf(step: WorkflowStep): string {
         case "ACTION": return step.topic ? "→ " + step.topic : "ACTION";
         case "USER_TASK": return "👤 " + (step.formId || "form");
         case "RULE": return "ƒ " + (step.ruleId || "rule");
-        case "WAIT_FOR_MESSAGE": return "✉ " + (step.messageName || "message");
+        case "WAIT_FOR_MESSAGE": return step.onEvent ? "⚡ " + describeEventSource(step.onEvent)
+            : "✉ " + (step.messageName || "message");
         case "SEND_MESSAGE": return "✉→ " + (step.messageName || "message");
         case "FORK": return "⑃ FORK";
         case "JOIN": return "⨝ JOIN";
@@ -3351,6 +3378,16 @@ export class MateuWorkflowElk extends LitElement {
                 <path class="ov-spark" d="M 1 -5 L -3 1 H 0 L -1 5 L 4 -1 H 1 Z"/>
             </g>` : nothing;
 
+        // A START that domain events fire wears an amber ⚡ in its top-right corner; hovering it
+        // lists the event types (the hover card says it too).
+        const startTriggers = step.type === "START" ? (this.wf.triggers ?? []) : [];
+        const triggerBadge = startTriggers.length ? svg`
+            <g class="trigger-badge" transform="translate(${w - 5}, 5)">
+                <title>Started by ${startTriggers.map(describeEventSource).join(", ")}</title>
+                <circle r="8"/>
+                <path class="trigger-spark" d="M 1 -5 L -3 1 H 0 L -1 5 L 4 -1 H 1 Z"/>
+            </g>` : nothing;
+
         const linkCls = `${(this.linkHoverId === step.id || this.paletteHoverNode === step.id) ? "link-target" : ""} ${this.linkingFrom === step.id ? "link-source" : ""}`;
         const monDim = this.hasStateOverlay() && !this.isVisited(step.id) ? "mon-dim" : "";
         const focusDim = this.focusPaint && !this.focusPaint.nodes.has(step.id) ? "focus-dim" : "";
@@ -3370,6 +3407,7 @@ export class MateuWorkflowElk extends LitElement {
                 ${cancelled}
                 ${timedOut}
                 ${injectedBadge}
+                ${triggerBadge}
             </g>
         `;
     }
@@ -3490,6 +3528,8 @@ export class MateuWorkflowElk extends LitElement {
                 <div class="tip-name">${step.name || step.id}</div>
                 <div class="tip-sub">${step.id} · ${step.type}</div>
                 ${badge.length > NODE_BADGE_CHARS ? html`<div class="tip-badge">${badge}</div>` : nothing}
+                ${step.type === "START" && this.wf.triggers?.length ? html`<div class="tip-badge">⚡ Started by
+                    ${this.wf.triggers.map(describeEventSource).join(", ")}</div>` : nothing}
             </div>`;
     }
 
@@ -3582,6 +3622,14 @@ export class MateuWorkflowElk extends LitElement {
                     ${step.type === "PUBLISH_EVENT" ? field("Event", html`
                         <input class="inp" readonly title="Edit the event block in the YAML"
                                .value="${(step.event?.type || "") + " → " + (step.event?.destination || "")}"/>`) : ""}
+                    ${step.type === "WAIT_FOR_MESSAGE" && step.onEvent ? field("Event source", html`
+                        <input class="inp" readonly title="Edit the onEvent block in the YAML"
+                               .value="${describeEventWait(step.onEvent)}"/>`) : ""}
+                    ${step.type === "START" && this.wf.triggers?.length ? field("Event triggers", html`
+                        <textarea class="inp" rows="${Math.min(4, this.wf.triggers.length)}" readonly
+                                  title="Edit the triggers of the definition in the YAML"
+                                  .value="${this.wf.triggers.map(t => describeEventSource(t)
+                                      + (t.filter ? " · if " + t.filter : "")).join("\n")}"></textarea>`) : ""}
                     ${step.type === "REPLY" ? field("Reply variables", html`
                         <input class="inp" placeholder="bookingId, status" ?readonly="${ro}"
                                .value="${(step.replyVariables ?? []).join(", ")}"
@@ -3913,6 +3961,9 @@ export class MateuWorkflowElk extends LitElement {
         .node.ov-injected .node-shape {stroke-dasharray: 3 3 !important;}
         .ov-injected-badge circle {fill: #0d9488; stroke: var(--ec-surface); stroke-width: 1.5;}
         .ov-injected-badge .ov-spark {fill: #fff; stroke: none;}
+        /* event triggers on the START node: an amber ⚡ */
+        .trigger-badge circle {fill: #f59e0b; stroke: var(--ec-surface); stroke-width: 1.5;}
+        .trigger-badge .trigger-spark {fill: #fff; stroke: none;}
         /* parts the process hasn't reached yet fade back */
         .node.mon-dim {opacity: .3;}
         /* ...but a PENDING step is not one of them. It has a step execution: the engine has

@@ -129,6 +129,10 @@ guarantees is specified below and in the reliability and scale runs under
 | E2E-MSG-05 | **Messages are ignored, not buffered.** A message arriving when no step is waiting for it is dropped: a process created afterwards still waits, and only a redelivery resumes it. This is the documented delivery contract (at-least-once upstream: the sender retries). |
 | E2E-MSG-06 | **A correlation key that moves while the step waits.** The key is materialised on the step execution so an arriving message can be matched by index. A parallel branch that writes the very variable the `correlationExpression` reads moves it: the key armed at start stops matching and the new one correlates. Correlation reads the process as it is now, not as it was when the wait began. |
 | E2E-CRON-01 | **Cron-scheduled process starts.** An ACTIVE definition with a `cronExpression` gets process instances created automatically at each occurrence; business keys are derived deterministically from the occurrence time (no duplicate instances per occurrence) and the instances run to COMPLETED. |
+| E2E-EVT-01 | **Event triggers start processes.** An event matching a trigger's destination and type (exact or `*` wildcard) whose filter holds starts the definition with the variables the trigger maps (default: `data`'s members); a filter that does not hold, a DISABLED definition and a paused trigger start nothing, and resuming does not replay. `EventTriggerE2eTest`, `EventTriggerJpaE2eTest`. |
+| E2E-EVT-02 | **An event is used once per receiver.** Delivering the same event (CloudEvents source + id) again starts no second process (duplicate reported per trigger); another event rendering the same author business key collapses into the existing process. |
+| E2E-EVT-03 | **onEvent waits.** A WAIT_FOR_MESSAGE with `onEvent` is completed by an event whose rendered correlation key matches its `correlationExpression`, merging the variables it maps; another key or a filtered-out event leaves it waiting, and the same event redelivered is not correlated into the process's next wait for the same message. |
+| E2E-EVT-04 | **Loopback.** In embedded mode a PUBLISH_EVENT of one workflow starts another workflow whose trigger names that destination and type. |
 
 ## 4. Idempotency, consistency, security
 
@@ -214,6 +218,7 @@ profile and a dedicated CI job.
 | DIST-27 | **Inline drive vs partition owner.** A two-worker FORK: the receiving pod dispatches inline while a worker reply may land on the owner — two writers for a moment. Every step runs exactly once, every caller is answered. | ✅ `Dist27InlineAgainstPartitionOwnerTest` |
 | DIST-28 | **NOTIFY listener killed.** The listeners' backends are terminated; callers are still answered (poll), and the listeners come back. | ✅ `Dist28ReplyListenerKilledTest` |
 | DIST-29 | **PUBLISH_EVENT over Kafka.** A process publishes a domain event to a configured destination; it lands on the mapped topic once, keyed and with its CloudEvents `ce_*` headers, after the step completed. | ✅ `Dist29PublishEventOverKafkaTest` |
+| DIST-32 | **Domain events in over Kafka.** A binary-mode CloudEvent produced twice onto a destination's topic, with two pods in the consumer group, starts the triggered workflow once (one STARTED receipt); an event on another topic completes its `onEvent` wait, correlated by the record key, while another key's does not. | ✅ `Dist32InboundEventsOverKafkaTest` |
 | BENCH | **Sync latency, fast path on/off, 1 and 2 pods** — opt-in (`-Dbench.sync=true`), prints p50/p95/p99. | `SyncLatencyBenchmarkTest` |
 
 Embedded suite (`modules/workflow-e2e`): `ReplyStepE2eTest`/`ReplyStepJpaE2eTest` (REPLY recorded with

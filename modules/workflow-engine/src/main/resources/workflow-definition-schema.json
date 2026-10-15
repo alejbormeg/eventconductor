@@ -169,6 +169,16 @@
         "$ref": "#/$defs/CronSchedule"
       }
     },
+    "triggers": {
+      "type": [
+        "array",
+        "null"
+      ],
+      "description": "Event triggers: the domain events that start a process of this definition, beside cronExpression and schedules. Each names a destination (workflow.events.destinations.<name>), a CloudEvents type, an optional filter, business key and variable mapping over the event. Listed on the definition's Triggers tab and on Workflow → Events, where they are paused and resumed; what each received event started is on Workflow → Received events (and GET /workflow/api/events/received).",
+      "items": {
+        "$ref": "#/$defs/EventTrigger"
+      }
+    },
     "status": {
       "type": [
         "string",
@@ -303,6 +313,108 @@
               "boolean"
             ]
           }
+        }
+      }
+    },
+    "EventTrigger": {
+      "title": "EventTrigger",
+      "type": "object",
+      "description": "One event trigger: when a domain event of type arrives on destination and filter holds, the engine starts a process of this definition with variables as its initial variables. While the definition is ACTIVE and the trigger is not paused (Workflow → Events, REST or MCP); a PAUSED definition's process is created already paused, as for a schedule; a DISABLED or ARCHIVED definition starts nothing. Idempotent: the same event (CloudEvents source + id) starts at most one process per trigger, whatever the channel and however many times it is delivered.",
+      "additionalProperties": false,
+      "required": [
+        "destination",
+        "type"
+      ],
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+          "maxLength": 100,
+          "description": "Optional name of the trigger (letters, digits, '.', '_', '-'), unique in the definition. A pause is kept under it and the default business key carries it. Absent means derived from the type (com.acme.booking.created; a second trigger with the same type gets -2)."
+        },
+        "destination": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+          "description": "A logical destination, mapped to a topic by workflow.events.destinations.<name>.topic — the same names PUBLISH_EVENT publishes to, never a topic itself. In kafka mode the engine consumes the topics of the destinations that some trigger or onEvent names (consumer group workflow.events.consumer.group); events also arrive through POST /workflow/api/events/{destination}, the publishInboundEvent MCP tool, the embedded InboundEventService and, in embedded mode, from this engine's own PUBLISH_EVENT steps."
+        },
+        "type": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The CloudEvents type to match (ce_type), e.g. com.acme.booking.created. '*' matches any run of characters (com.acme.booking.*); a lone '*' matches every event on the destination, including plain records that carry no type."
+        },
+        "filter": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Optional JEXL boolean expression over the event, without ${...} (e.g. data.channel == 'web' && data.nights > 1). The event is used only when it evaluates to true; an expression that cannot be evaluated counts as false and is recorded as an ERROR receipt. Evaluated over the event context: id, source, type, subject, time, key (the Kafka record key, or the key given to the REST/MCP inject), destination, datacontenttype, data (the payload parsed as JSON — objects are maps, so data.bookingId — or its raw text) and extensions (any other CloudEvents attribute)."
+        },
+        "businessKey": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Optional text template over the event for the started process's business key (e.g. \"booking-${data.bookingId}\"). Absent means <definition>-evt-<trigger>-<16 hex of a SHA-256 of the event's source and id>, so a redelivered event collapses into the process it already started. A given key is honoured as given: two different events that render the same key start one process. Evaluated over the event context: id, source, type, subject, time, key (the Kafka record key, or the key given to the REST/MCP inject), destination, datacontenttype, data (the payload parsed as JSON — objects are maps, so data.bookingId — or its raw text) and extensions (any other CloudEvents attribute)."
+        },
+        "variables": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "description": "The variables, by name, each a payload template over the event (\"${data.bookingId}\"; a leaf that is exactly one expression keeps its type, and a non-string value becomes its JSON text, as process variables are strings). Absent means every top-level member of data when data is a JSON object; {} means none. Evaluated over the event context: id, source, type, subject, time, key (the Kafka record key, or the key given to the REST/MCP inject), destination, datacontenttype, data (the payload parsed as JSON — objects are maps, so data.bookingId — or its raw text) and extensions (any other CloudEvents attribute).",
+          "additionalProperties": true
+        }
+      }
+    },
+    "EventWait": {
+      "title": "EventWait",
+      "type": [
+        "object",
+        "null"
+      ],
+      "description": "WAIT_FOR_MESSAGE only: a domain event that is this step's message. An event of type arriving on destination for which filter holds becomes the message messageName with the correlation key and variables rendered from it, dispatched like any message — so the step's correlationExpression, deadline, timeout and onTimeoutStepId apply unchanged, and the message API can still complete the wait by messageName. The same event (source + id) is correlated at most once per message and key.",
+      "additionalProperties": false,
+      "required": [
+        "destination",
+        "type"
+      ],
+      "properties": {
+        "destination": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+          "description": "A logical destination, mapped to a topic by workflow.events.destinations.<name>.topic — the same names PUBLISH_EVENT publishes to, never a topic itself. In kafka mode the engine consumes the topics of the destinations that some trigger or onEvent names (consumer group workflow.events.consumer.group); events also arrive through POST /workflow/api/events/{destination}, the publishInboundEvent MCP tool, the embedded InboundEventService and, in embedded mode, from this engine's own PUBLISH_EVENT steps."
+        },
+        "type": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The CloudEvents type to match (ce_type), e.g. com.acme.booking.created. '*' matches any run of characters (com.acme.booking.*); a lone '*' matches every event on the destination, including plain records that carry no type."
+        },
+        "correlationKey": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Optional text template over the event for the correlation key it carries (e.g. \"${data.bookingId}\"); it must equal the value of the step's correlationExpression over the process. Absent means the event's key (the Kafka record key or the key given to the inject), else its subject. Evaluated over the event context: id, source, type, subject, time, key (the Kafka record key, or the key given to the REST/MCP inject), destination, datacontenttype, data (the payload parsed as JSON — objects are maps, so data.bookingId — or its raw text) and extensions (any other CloudEvents attribute)."
+        },
+        "filter": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Optional JEXL boolean expression over the event, without ${...} (e.g. data.channel == 'web' && data.nights > 1). The event is used only when it evaluates to true; an expression that cannot be evaluated counts as false and is recorded as an ERROR receipt. Evaluated over the event context: id, source, type, subject, time, key (the Kafka record key, or the key given to the REST/MCP inject), destination, datacontenttype, data (the payload parsed as JSON — objects are maps, so data.bookingId — or its raw text) and extensions (any other CloudEvents attribute)."
+        },
+        "variables": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "description": "The variables the message merges into the process, by name, each a payload template over the event (\"${data.bookingId}\"; a leaf that is exactly one expression keeps its type, and a non-string value becomes its JSON text, as process variables are strings). Absent means every top-level member of data when data is a JSON object; {} means none. Evaluated over the event context: id, source, type, subject, time, key (the Kafka record key, or the key given to the REST/MCP inject), destination, datacontenttype, data (the payload parsed as JSON — objects are maps, so data.bookingId — or its raw text) and extensions (any other CloudEvents attribute).",
+          "additionalProperties": true
         }
       }
     },
@@ -610,6 +722,9 @@
             "payloadVariables": { "type": ["array", "null"], "items": { "type": "string" }, "description": "The payload is an object of these process variables." },
             "format": { "type": ["string", "null"], "enum": ["binary", "structured", "plain", null], "description": "CloudEvents binary (default: ce_* headers) or structured (JSON envelope), or plain (the payload alone). Null takes the destination's format." }
           }
+        },
+        "onEvent": {
+          "$ref": "#/$defs/EventWait"
         },
         "replyTemplate": {
           "description": "REPLY only: the reply as a structured template — JSON/YAML whose string leaves may hold ${...} JEXL expressions. A leaf that is exactly one expression keeps its type; text around expressions makes a string. Mutually exclusive with replyVariables and replyExpression."

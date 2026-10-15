@@ -321,6 +321,18 @@ Only relevant to definitions that declare `syncInvocation`; see [Synchronous Inv
 | `workflow.events.destinations.<name>.topic` | — | The topic a `PUBLISH_EVENT` destination is published to (kafka mode). |
 | `workflow.events.destinations.<name>.format` | `binary` | `binary` / `structured` CloudEvents, or `plain`; a step may override. |
 | `workflow.events.max-payload-bytes` | `262144` | Largest event payload; larger fails the step. |
+| `workflow.events.loopback` | `true` | Embedded mode: a `PUBLISH_EVENT` of this engine is also received by its own event triggers and `onEvent` waits. |
+| `workflow.events.consumer.enabled` | `true` | Kafka mode: consume the topics of the destinations event triggers and `onEvent` waits name. |
+| `workflow.events.consumer.group` | `eventconductor-inbound-events` | Their consumer group — one per deployment, so each event is used by one pod. |
+| `workflow.events.consumer.bootstrap-servers` | — | Brokers; empty means `spring.cloud.stream.kafka.binder.brokers`, else `spring.kafka.bootstrap-servers`. |
+| `workflow.events.consumer.auto-offset-reset` | `latest` | Where a new group starts; `latest` does not replay a topic's history when a trigger is turned on. |
+| `workflow.events.consumer.refresh-interval` | `PT30S` | How often the set of topics is recomputed from the definitions. |
+| `workflow.events.consumer.retry-backoff` | `PT5S` | Back-off before retrying an event whose starts or messages could not be handed over. |
+| `workflow.events.consumer.concurrency` | `1` | Consumer threads. |
+| `workflow.events.receipts.retention` | `P7D` | How long an event's receipts — the protection against a redelivery — are kept. |
+| `workflow.events.receipts.purge-interval` | `PT10M` | How often old receipts are purged. |
+
+See [Starting on and waiting for domain events](/guides/domain-event-triggers/).
 
 ### HTTP calls (`workflow.http.*`, in whatever runs `worker-http`)
 

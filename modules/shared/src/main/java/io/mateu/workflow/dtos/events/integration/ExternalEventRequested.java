@@ -31,9 +31,9 @@ public record ExternalEventRequested(
         String time) implements DomainEvent {
 
     /**
-     * The event's own key, so a topic partitioned by it keeps one entity's events in order. (It is
-     * never consumed back by the engine: in kafka mode it goes to its destination topic, not to the
-     * process's outbox topic.)
+     * The event's own key, so a topic partitioned by it keeps one entity's events in order. (It never goes
+     * back into the process's outbox topic: in kafka mode it goes to its destination topic — which the
+     * engine consumes again only when an event trigger or an {@code onEvent} wait names that destination.)
      */
     @Override
     public String partitionKey() {

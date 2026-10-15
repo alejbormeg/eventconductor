@@ -22,6 +22,10 @@ Entries may instead live in `cron.yaml` beside the definitions — `[{id?, cron,
 never read as a definition; unknown `workflow` → logged and skipped. Schedules can also be created from
 the admin UI / `/workflow/api/schedules` / MCP; a file entry with the same `id` takes such a schedule
 over on import, and an entry removed from its file is deleted),
+`triggers?` (`[{id?, destination, type, filter?, businessKey?, variables?}]` — domain events that start an
+instance; templates and the JEXL filter over the event: `id`, `source`, `type`, `subject`, `key`, `data.x`;
+default business key derived from the event, default variables `data`'s members; one process per event and
+trigger; a WAIT_FOR_MESSAGE can wait for one with `onEvent: {destination, type, correlationKey?, filter?, variables?}`),
 `defaultMaxStepExecutions?` (validated metadata, not enforced at runtime today),
 `processLock?` (`{name?, key}` — serialize instances by a JEXL key),
 `syncInvocation?` (`{enabled, onFailure: REPLY_IMMEDIATELY|REPLY_AFTER_COMPENSATION, onLockBusy: WAIT|FAIL, defaultDeadlineMs}` —

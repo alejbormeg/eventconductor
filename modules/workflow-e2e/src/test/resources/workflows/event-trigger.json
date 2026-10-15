@@ -1,0 +1,27 @@
+{
+  "id": "event-trigger",
+  "name": "Started by a domain event",
+  "version": 1,
+  "triggers": [
+    {
+      "destination": "e2e-bookings",
+      "type": "com.acme.booking.created",
+      "variables": {
+        "bookingId": "${data.bookingId}",
+        "nights": "${data.nights}",
+        "eventId": "${id}"
+      }
+    },
+    {
+      "id": "web",
+      "destination": "e2e-bookings",
+      "type": "com.acme.booking.*",
+      "filter": "data.channel == 'web'",
+      "businessKey": "web-${data.bookingId}"
+    }
+  ],
+  "steps": [
+    { "id": "start", "type": "START", "name": "Start" },
+    { "id": "end", "type": "END", "name": "End", "preconditionStepId": "start" }
+  ]
+}

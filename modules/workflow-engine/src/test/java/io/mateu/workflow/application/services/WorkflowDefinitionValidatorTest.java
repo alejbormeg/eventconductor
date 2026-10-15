@@ -131,6 +131,101 @@ class WorkflowDefinitionValidatorTest {
     }
 
     @Test
+    void triggersAndAnOnEventWaitRoundTripThroughYamlAndPassValidation() throws Exception {
+        var yaml = """
+                id: wd-1
+                name: Test
+                triggers:
+                  - destination: bookings
+                    type: com.acme.booking.created
+                    filter: "data.channel == 'web'"
+                    businessKey: "booking-${data.bookingId}"
+                    variables:
+                      bookingId: "${data.bookingId}"
+                      nights: 2
+                  - id: any-booking
+                    destination: bookings
+                    type: com.acme.booking.*
+                steps:
+                  - id: start
+                    type: START
+                    name: Start
+                  - id: wait
+                    type: WAIT_FOR_MESSAGE
+                    name: Wait for the payment
+                    preconditionStepId: start
+                    messageName: payment-captured
+                    correlationExpression: bookingId
+                    onEvent:
+                      destination: payments
+                      type: com.acme.payment.captured
+                      correlationKey: "${data.bookingId}"
+                """;
+        var mapper = new com.fasterxml.jackson.dataformat.yaml.YAMLMapper();
+        validator.validateSource(mapper.readTree(yaml), "inline");
+        var wd = mapper.readValue(yaml, WorkflowDefinition.class);
+        assertThatNoException().isThrownBy(() -> validator.validate(wd));
+
+        org.assertj.core.api.Assertions.assertThat(wd.identifiedTriggers())
+                .extracting(io.mateu.workflow.domain.aggregates.EventTrigger::id)
+                .containsExactly("com.acme.booking.created", "any-booking");
+        org.assertj.core.api.Assertions.assertThat(wd.triggers().getFirst().variables())
+                .containsEntry("bookingId", "${data.bookingId}").containsEntry("nights", 2);
+        org.assertj.core.api.Assertions.assertThat(wd.steps().get(1).onEvent().correlationKey()).isEqualTo("${data.bookingId}");
+        // No triggers key on export when there are none.
+        var plain = new ObjectMapper().writeValueAsString(wd.withTriggers(null).withSteps(List.of(startStep())));
+        org.assertj.core.api.Assertions.assertThat(plain).doesNotContain("triggers");
+        // Nor an onEvent key on a step without one: what a definition version is hashed from is unchanged.
+        org.assertj.core.api.Assertions.assertThat(io.mateu.core.infra.JsonSerializer.toJson(startStep()))
+                .doesNotContain("onEvent");
+    }
+
+    @Test
+    void aTriggerWithoutATypeABadFilterOrARepeatedIdIsRejected() {
+        var wd = new WorkflowDefinition("wd-1", "Test", 1, "desc", false, 0, false, null, 0,
+                List.of(startStep(), actionStep("s1")))
+                .withTriggers(List.of(
+                        new io.mateu.workflow.domain.aggregates.EventTrigger("t", "bookings", null, null, null, null),
+                        new io.mateu.workflow.domain.aggregates.EventTrigger("t", "bookings", "x", "data.a >", null, null)));
+
+        assertThatThrownBy(() -> validator.validate(wd))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("triggers[0]: a type is required")
+                .hasMessageContaining("triggers[1] filter")
+                .hasMessageContaining("trigger id 't' is declared more than once");
+    }
+
+    @Test
+    void onEventOnAStepThatIsNotAWaitIsRejected() {
+        var step = actionStep("s1").withOnEvent(new io.mateu.workflow.domain.aggregates.EventWait("payments", "x", null, null, null));
+        var wd = new WorkflowDefinition("wd-1", "Test", 1, "desc", false, 0, false, null, 0, List.of(startStep(), step));
+
+        assertThatThrownBy(() -> validator.validate(wd))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("declares onEvent, which only a WAIT_FOR_MESSAGE reads");
+    }
+
+    @Test
+    void aMisspelledTriggerFieldIsCaughtBySourceValidation() throws Exception {
+        var yaml = """
+                name: Test
+                steps:
+                  - id: start
+                    type: START
+                    name: Start
+                triggers:
+                  - destination: bookings
+                    type: com.acme.booking.created
+                    filtr: "true"
+                """;
+        var tree = new com.fasterxml.jackson.dataformat.yaml.YAMLMapper().readTree(yaml);
+
+        assertThatThrownBy(() -> validator.validateSource(tree, "typo.yaml"))
+                .isInstanceOf(WorkflowDefinitionValidator.WorkflowDefinitionValidationException.class)
+                .hasMessageContaining("filtr");
+    }
+
+    @Test
     void definitionWithSelfPreconditionFailsInvariantCheck() {
         Step selfPrecondition = new Step("s1", null, StepType.ACTION, "Step", null, "s1", null, null, false, "topic", null, null, null, null, 0, null, null, null, null, 0, 0, false, null, 0, null);
         var wd = new WorkflowDefinition("wd-1", "Test", 1, "desc",  false, 0, false, null, 0, List.of(selfPrecondition));

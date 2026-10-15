@@ -284,6 +284,24 @@ Delivery semantics:
 - **Idempotent.** A duplicate delivery of an already-correlated message is ignored: the step only completes once.
 - **Broadcast.** If several processes are waiting on the same `messageName` and correlation key, all of them are resumed.
 
+**Fed by a domain event.** With an `onEvent` block, a CloudEvent arriving on a destination becomes the step's message — no one has to call the message API:
+
+```yaml
+- id: wait-payment
+  type: WAIT_FOR_MESSAGE
+  name: Wait for the payment
+  messageName: payment-captured
+  correlationExpression: bookingId
+  onEvent:
+    destination: payments                # workflow.events.destinations.payments.topic
+    type: com.acme.payment.captured      # '*' wildcards allowed
+    correlationKey: "${data.bookingId}"  # template over the event; default the record key, else the subject
+    filter: "data.status == 'CAPTURED'"  # optional JEXL over the event
+    variables: { paymentId: "${data.paymentId}" }   # default: data's top-level members
+```
+
+The same event (CloudEvents source + id) is correlated at most once per message and key. See [Starting on and waiting for domain events](/guides/domain-event-triggers/).
+
 `timeout` and `retries` keep their usual meaning: a waiting WAIT_FOR_MESSAGE step that receives no message within `timeout` transitions to `TIMEOUT` and the normal retry/failure pipeline engages (a retry re-arms the wait).
 
 Systems that cannot produce to Kafka (webhooks, SaaS callbacks) can deliver messages over REST — same correlation, any mode (embedded or kafka):
@@ -680,4 +698,5 @@ Rendered by the engine and executed by the built-in `llm-call@1` task (`worker-l
 | `compensationStepId` | string | — | Step to run as compensation. **Required when `compensable: true`** (enforced by the JSON schema) |
 | `onTimeoutStepId` | string | — | Step to route to when this step times out (after `retries` are exhausted) instead of failing the process — the step's own on-timeout branch. See [On-timeout routing](/guides/retries-timeouts-compensation/#on-timeout-routing) |
 | `deadline` | moment | — | ACTION, USER_TASK, RULE, WAIT_FOR_MESSAGE, PROCESS, HTTP_CALL, LLM_CALL: a moment (`{date, offset, at, zone}` from the process's data) by which the step must have finished. Reaching it is a timeout that retries do not extend; with `timeout` too, the earlier wins; it follows the variables. See [Scheduling and Deadlines](/guides/scheduling-and-deadlines/) |
+| `onEvent` | object | — | WAIT_FOR_MESSAGE only: `{destination, type, correlationKey?, filter?, variables?}` — a domain event that becomes the step's message. See [Starting on and waiting for domain events](/guides/domain-event-triggers/) |
 | `maxSuccessfulExecutions` | integer | `0` | Cap on how many times this step may successfully run within one process instance (backstop against runaway loops). `0` inherits the workflow-level `defaultMaxStepExecutions`; both `0` = unbounded. Validated design metadata today — the engine runs each step once, and the cap will be enforced when step re-execution lands |

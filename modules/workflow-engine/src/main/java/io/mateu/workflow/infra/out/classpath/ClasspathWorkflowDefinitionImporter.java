@@ -85,7 +85,10 @@ public class ClasspathWorkflowDefinitionImporter implements ApplicationRunner {
                                 .withLayout(def.layout())
                                 .withProcessLock(def.processLock())
                                 .withSyncInvocation(def.syncInvocation())
-                                .withSchedules(def.schedules());
+                                .withSchedules(def.schedules())
+                                .withTriggers(def.triggers())
+                                // The narrower constructor above declares ACTIVE: keep what the file says.
+                                .withDeclaredStatus(def.declaredStatus());
                     }
                     workflowDefinitionRepository.save(taskReferenceResolver.resolve(def));
                     log.info("Imported workflow definition '{}' from classpath:{}", def.id(), filename);

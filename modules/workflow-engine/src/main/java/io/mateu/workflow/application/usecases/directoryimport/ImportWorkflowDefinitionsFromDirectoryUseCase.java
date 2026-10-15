@@ -204,7 +204,10 @@ public class ImportWorkflowDefinitionsFromDirectoryUseCase {
                     .withLayout(definition.layout())
                     .withProcessLock(definition.processLock())
                     .withSyncInvocation(definition.syncInvocation())
-                    .withSchedules(definition.schedules());
+                    .withSchedules(definition.schedules())
+                    .withTriggers(definition.triggers())
+                    // The narrower constructor above declares ACTIVE: keep what the file says.
+                    .withDeclaredStatus(definition.declaredStatus());
         }
 
         // What the file says about being disabled or archived is a declaration, not a runtime
@@ -282,7 +285,8 @@ public class ImportWorkflowDefinitionsFromDirectoryUseCase {
                 .withLayout(fromFile.layout())
                 .withProcessLock(fromFile.processLock())
                 .withSyncInvocation(fromFile.syncInvocation())
-                .withSchedules(fromFile.schedules());
+                .withSchedules(fromFile.schedules())
+                .withTriggers(fromFile.triggers());
     }
 
     /**
