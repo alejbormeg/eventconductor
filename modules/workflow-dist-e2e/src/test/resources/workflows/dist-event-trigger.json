@@ -1,0 +1,31 @@
+{
+  "id": "dist-event-trigger",
+  "name": "Distributed: started by a domain event, then waits for another",
+  "version": 1,
+  "triggers": [
+    {
+      "id": "on-order-placed",
+      "destination": "dist32-orders",
+      "type": "com.acme.order.placed",
+      "businessKey": "dist32-${data.orderId}",
+      "variables": { "orderId": "${data.orderId}" }
+    }
+  ],
+  "steps": [
+    { "id": "start", "type": "START", "name": "Start" },
+    {
+      "id": "wait-payment",
+      "type": "WAIT_FOR_MESSAGE",
+      "name": "Wait for the payment",
+      "preconditionStepId": "start",
+      "messageName": "dist32-payment-captured",
+      "correlationExpression": "orderId",
+      "onEvent": {
+        "destination": "dist32-payments",
+        "type": "com.acme.payment.captured",
+        "variables": { "paymentId": "${data.paymentId}" }
+      }
+    },
+    { "id": "end", "type": "END", "name": "End", "preconditionStepId": "wait-payment" }
+  ]
+}
