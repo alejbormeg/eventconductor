@@ -752,6 +752,41 @@ is answered `400` with every violation in `violations`.
 Scanning is tuned with `workflow.cron-scan-interval-ms` (default `10000`) and switched off with
 `workflow.cron-enabled=false`.
 
+### Started by — and waiting for — domain events
+
+A definition can start on a **domain event** instead of a clock, and a `WAIT_FOR_MESSAGE` can wait for one
+from another system. Events are CloudEvents 1.0 on a logical **destination** — the same
+`workflow.events.destinations.<name>.topic` names `PUBLISH_EVENT` publishes to:
+
+```yaml
+triggers:
+  - id: on-booking-created
+    destination: bookings
+    type: com.acme.booking.created          # '*' wildcards allowed
+    filter: "data.channel == 'web'"         # JEXL over the event
+    businessKey: "booking-${data.bookingId}" # default: derived from the event's source + id
+    variables: { bookingId: "${data.bookingId}" }
+steps:
+  # …
+  - id: wait-payment
+    type: WAIT_FOR_MESSAGE
+    name: Wait for the payment
+    messageName: payment-captured
+    correlationExpression: bookingId
+    onEvent:
+      destination: payments
+      type: com.acme.payment.captured
+      correlationKey: "${data.bookingId}"   # default: the record key, else the subject
+```
+
+Each event (source + id) starts at most one process per trigger and is correlated at most once. In
+kafka mode the engine consumes the destinations' topics (group `workflow.events.consumer.group`); in
+any mode `POST /workflow/api/events/{destination}` and the MCP tool `publishInboundEvent` inject one,
+and in embedded mode `InboundEventService` (or a Spring `InboundEvent` application event) does, as do
+the engine's own `PUBLISH_EVENT`s. Triggers are listed, paused and resumed on **Workflow → Event
+triggers**, `/workflow/api/triggers` and MCP; **Workflow → Received events** shows what each event did.
+See the guide *Starting on and waiting for domain events*.
+
 ### Workflow definition status
 
 | Status | Description |

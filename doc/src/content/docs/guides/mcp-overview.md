@@ -41,6 +41,10 @@ ia-agent-service  (port 8095)
 | `createSchedule` / `updateSchedule` / `deleteSchedule` | Manage the schedules created through the engine (source UI/API). A schedule declared in a definition or a `cron.yaml` is owned by its file and refused here |
 | `pauseSchedule` / `resumeSchedule` | Pause or resume any schedule; the pause is kept by id and survives re-imports |
 | `runScheduleNow` | Start the schedule's workflow once, now, with its variables |
+| `listEventTriggers` | Every event trigger, optionally of one workflow: destination and topic, type, filter, business key, variables, status ([guide](/guides/domain-event-triggers/)) |
+| `pauseEventTrigger` / `resumeEventTrigger` | Pause or resume a trigger; while paused, matching events start nothing and are not replayed |
+| `listReceivedEvents` | The latest received domain events and what each did: started a process, delivered a message, or the error |
+| `publishInboundEvent` | Inject a domain event on a destination (for tests and systems without Kafka); returns what it started and delivered |
 | `exportScheduleYaml` | The schedule's `cron.yaml` entry, id included, to promote it to git ([lifecycle](/guides/starting-a-process/#managing-schedules-from-the-ui-the-rest-api-and-mcp)) |
 
 ### Forms engine (`forms-engine`, port 8106)

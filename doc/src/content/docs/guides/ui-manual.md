@@ -33,7 +33,7 @@ Access the workflow engine by navigating to `http://localhost:8191/_workflow` or
 
 :::note[Two base URLs since 2.12.0]
 The engine serves its UI in two halves. `/_workflow` carries the operations pages — Processes and
-Steps — and `/_workflow-admin` carries Definitions, Tasks, Schedules and Analytics. The forms engine is split the
+Steps — and `/_workflow-admin` carries Definitions, Tasks, Schedules, Event triggers, Received events and Analytics. The forms engine is split the
 same way, `/_forms` and `/_forms-admin`.
 
 Same pod either way; the split exists so a deployment with two consoles can put administration
@@ -236,6 +236,26 @@ deleted. See [Managing schedules](/guides/starting-a-process/#managing-schedules
 The definition detail's **Schedules** tab lists the same schedules for one workflow, each id a link
 to its page.
 
+### Event triggers and received events
+
+Navigate via **Workflow → Event triggers** (admin console).
+
+Every event trigger of every workflow — the domain events that start it (see
+[Starting on and waiting for domain events](/guides/domain-event-triggers/)). Columns: **Id**
+(`<workflow>/<trigger>`), **Workflow**, **Trigger**, **Destination → topic** (saying so when the
+destination has no topic configured), **Type**, **Filter**, **Business key**, **Variables**, **Paused by**
+and **Status** (**Active**, **Paused**, **Workflow inactive**). Filters narrow by workflow and status;
+**Pause** and **Resume** act on the selected rows. A paused trigger starts nothing, and resuming it does
+not replay what arrived meanwhile. Triggers are declared in their definitions and changed there.
+
+**Workflow → Received events** lists the latest receipts, newest first: **Received**, **Destination**,
+**Type**, **Event id**, **Source**, **Workflow**, **Receiver** (`trigger:<workflow>/<trigger>` or
+`wait:<message>/<key>`), **Business key / key** and **Outcome** (**Started**, **Delivered**, **Error** —
+the reason opens under the row). An event that matched nothing leaves no row.
+
+The definition detail's **Triggers** tab (shown when the definition declares any) lists its triggers
+with the same columns.
+
 ### Analytics
 
 Navigate via **Workflow → Analytics**.
@@ -340,6 +360,8 @@ http://localhost:8191/_workflow-admin    Workflow Engine — administration
   └─ Workflow → Tasks                   Task contracts
   └─ Workflow → Schedules               Every schedule: create, pause/resume, run now, promote to git
        └─ View                          Schedule detail
+  └─ Workflow → Event triggers          Every event trigger: pause/resume
+  └─ Workflow → Received events         What each received domain event started or delivered
   └─ Workflow → Analytics               Per-definition analytics & bottlenecks
 
 http://localhost:8191/_forms             Forms Engine — operations

@@ -59,3 +59,7 @@ void on(ExternalEventPublished published) {
 ```
 
 An application with a broker provides its own `ExternalEventPublisher` bean (Kafka, RabbitMQ, SNS…); it is called after the step's transaction committed, and throwing leaves the event to be retried.
+
+## Listening to events
+
+The other direction — a workflow started by a domain event, or a `WAIT_FOR_MESSAGE` waiting for one — uses the same destinations and CloudEvents conventions: see [Starting on and waiting for domain events](/guides/domain-event-triggers/). In embedded mode an event published here is also received by this engine's own triggers and waits (`workflow.events.loopback`, default `true`).

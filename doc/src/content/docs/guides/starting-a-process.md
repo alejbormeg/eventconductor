@@ -108,6 +108,20 @@ The lifecycle:
 
 Cron scanning can be tuned or disabled with `workflow.cron-scan-interval-ms` and `workflow.cron-enabled` (see the [configuration reference](/reference/configuration/)).
 
+## On a domain event
+
+A definition can declare `triggers`: a CloudEvent of a given type arriving on a destination (a topic in kafka mode; the REST/MCP inject or the embedded API otherwise) starts a process, with a business key and initial variables mapped from the event — at most once per event and trigger.
+
+```yaml
+triggers:
+  - destination: bookings
+    type: com.acme.booking.created
+    businessKey: "booking-${data.bookingId}"
+    variables: { bookingId: "${data.bookingId}" }
+```
+
+See [Starting on and waiting for domain events](/guides/domain-event-triggers/).
+
 ## Process variables
 
 Variables are key-value pairs attached to the process. They are:
