@@ -1,0 +1,13 @@
+{
+  "id": "event-loopback-listener",
+  "name": "Started by another workflow's event",
+  "version": 1,
+  "triggers": [
+    { "id": "on-created", "destination": "e2e-loopback", "type": "com.acme.booking.created",
+      "businessKey": "listener-${data.bookingId}" }
+  ],
+  "steps": [
+    { "id": "start", "type": "START", "name": "Start" },
+    { "id": "end", "type": "END", "name": "End", "preconditionStepId": "start" }
+  ]
+}

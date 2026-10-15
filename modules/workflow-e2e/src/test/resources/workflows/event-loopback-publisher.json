@@ -1,0 +1,21 @@
+{
+  "id": "event-loopback-publisher",
+  "name": "Publishes the event another workflow starts on",
+  "version": 1,
+  "steps": [
+    { "id": "start", "type": "START", "name": "Start" },
+    {
+      "id": "announce",
+      "type": "PUBLISH_EVENT",
+      "name": "Booking created",
+      "preconditionStepId": "start",
+      "event": {
+        "destination": "e2e-loopback",
+        "type": "com.acme.booking.created",
+        "key": "${bookingId}",
+        "payload": { "bookingId": "${bookingId}", "nights": "${nights * 1}" }
+      }
+    },
+    { "id": "end", "type": "END", "name": "End", "preconditionStepId": "announce" }
+  ]
+}

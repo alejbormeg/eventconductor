@@ -1,0 +1,13 @@
+{
+  "id": "event-trigger-disabled",
+  "name": "A disabled definition with a trigger",
+  "version": 1,
+  "status": "DISABLED",
+  "triggers": [
+    { "destination": "e2e-bookings", "type": "com.acme.booking.created" }
+  ],
+  "steps": [
+    { "id": "start", "type": "START", "name": "Start" },
+    { "id": "end", "type": "END", "name": "End", "preconditionStepId": "start" }
+  ]
+}

@@ -1,0 +1,39 @@
+{
+  "id": "event-wait",
+  "name": "Waits twice for a payment event",
+  "version": 1,
+  "steps": [
+    { "id": "start", "type": "START", "name": "Start" },
+    {
+      "id": "first-payment",
+      "type": "WAIT_FOR_MESSAGE",
+      "name": "First payment",
+      "preconditionStepId": "start",
+      "messageName": "e2e-payment-captured",
+      "correlationExpression": "bookingId",
+      "onEvent": {
+        "destination": "e2e-payments",
+        "type": "com.acme.payment.captured",
+        "correlationKey": "${data.bookingId}",
+        "filter": "data.amount > 0",
+        "variables": { "lastPaymentId": "${data.paymentId}" }
+      }
+    },
+    {
+      "id": "second-payment",
+      "type": "WAIT_FOR_MESSAGE",
+      "name": "Second payment",
+      "preconditionStepId": "first-payment",
+      "messageName": "e2e-payment-captured",
+      "correlationExpression": "bookingId",
+      "onEvent": {
+        "destination": "e2e-payments",
+        "type": "com.acme.payment.captured",
+        "correlationKey": "${data.bookingId}",
+        "filter": "data.amount > 0",
+        "variables": { "lastPaymentId": "${data.paymentId}" }
+      }
+    },
+    { "id": "end", "type": "END", "name": "End", "preconditionStepId": "second-payment" }
+  ]
+}
