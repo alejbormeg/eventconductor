@@ -642,6 +642,25 @@ Rendered by the engine and executed by the built-in `http-call@1` task (`worker-
 
 ---
 
+## LLM_CALL
+
+Ask a language model a question built from the process's data and map its answer — text, or JSON valid against a schema — into variables, without writing a worker. See [LLM Calls](/guides/llm-calls/).
+
+```json
+{ "id": "triage", "type": "LLM_CALL", "name": "Triage", "preconditionStepId": "log", "retries": 2,
+  "llm": { "connection": "claude", "system": "You triage hotel guest complaints.",
+           "prompt": "${guestName} wrote: ${complaint}",
+           "responseSchema": { "type": "object", "required": ["category"],
+                               "properties": { "category": { "enum": ["room", "billing", "staff", "other"] } } },
+           "output": { "category": "json.category" }, "usageVariable": "triageUsage" } }
+```
+
+**Required:** `llm` with `connection` (a `workflow.llm.connections.<name>`), `prompt` (text template), and one of `output` / `outputVariable`. **Optional:** `model` (overrides the connection's), `system` (text template), `temperature` (0–2, sent only when set), `maxTokens`, `responseSchema` (JSON Schema — the answer is parsed and validated; an invalid one fails with `LLM_INVALID_OUTPUT`, retried), `output` (variable ← JEXL over `{text, json, usage, model, finishReason}`), `outputVariable` (the text, or the JSON document), `usageVariable` (`{model, inputTokens, outputTokens, totalTokens}`). No key or `${secret:…}` in the block: keys are the connection's configuration.
+
+Rendered by the engine and executed by the built-in `llm-call@1` task (`worker-llm`, on Spring AI: Anthropic and OpenAI-compatible providers): embedded in the engine's pod, or on topic `llm-calls` in kafka mode. Timeouts, retries, compensation and cancellation work as for `ACTION`; a provider 4xx (bad request, bad key) is final, 429/5xx/timeouts are retried.
+
+---
+
 ## Common fields (all step types)
 
 | Field | Type | Default | Description |
@@ -660,5 +679,5 @@ Rendered by the engine and executed by the built-in `http-call@1` task (`worker-
 | `compensable` | boolean | `false` | Trigger compensation step on failure |
 | `compensationStepId` | string | — | Step to run as compensation. **Required when `compensable: true`** (enforced by the JSON schema) |
 | `onTimeoutStepId` | string | — | Step to route to when this step times out (after `retries` are exhausted) instead of failing the process — the step's own on-timeout branch. See [On-timeout routing](/guides/retries-timeouts-compensation/#on-timeout-routing) |
-| `deadline` | moment | — | ACTION, USER_TASK, RULE, WAIT_FOR_MESSAGE, PROCESS, HTTP_CALL: a moment (`{date, offset, at, zone}` from the process's data) by which the step must have finished. Reaching it is a timeout that retries do not extend; with `timeout` too, the earlier wins; it follows the variables. See [Scheduling and Deadlines](/guides/scheduling-and-deadlines/) |
+| `deadline` | moment | — | ACTION, USER_TASK, RULE, WAIT_FOR_MESSAGE, PROCESS, HTTP_CALL, LLM_CALL: a moment (`{date, offset, at, zone}` from the process's data) by which the step must have finished. Reaching it is a timeout that retries do not extend; with `timeout` too, the earlier wins; it follows the variables. See [Scheduling and Deadlines](/guides/scheduling-and-deadlines/) |
 | `maxSuccessfulExecutions` | integer | `0` | Cap on how many times this step may successfully run within one process instance (backstop against runaway loops). `0` inherits the workflow-level `defaultMaxStepExecutions`; both `0` = unbounded. Validated design metadata today — the engine runs each step once, and the cap will be enforced when step re-execution lands |

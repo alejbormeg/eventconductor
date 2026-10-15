@@ -93,6 +93,15 @@ table — there it means "not measured", not "nothing stalled".
 |---|---|---|---|
 | `eventconductor.http.calls` | timer | `target` (connection or host), `status` (code, `timeout`, `io`) | Every HTTP_CALL request and how long it took |
 
+#### LLM calls (`worker-llm`)
+
+| Meter | Type | Tags | Meaning |
+|---|---|---|---|
+| `eventconductor.llm.call` (`eventconductor_llm_call_seconds_*`) | timer | `workflow`, `step`, `connection`, `model`, `outcome` (`success`, `error`, `invalid_output`) | Every LLM_CALL model call and how long it took |
+| `eventconductor.llm.tokens` (`eventconductor_llm_tokens_total`) | counter | `workflow`, `step`, `connection`, `model`, `type` (`input`, `output`) | Tokens used |
+
+Spring AI's own observations are recorded besides these: `gen_ai_client_operation_seconds_*` and `gen_ai_client_token_usage_total`, by provider and model. Prompts and answers are never logged.
+
 Tracing: the request's span `eventconductor.sync.invoke` carries a **link** to the process's anchored trace, and the `eventconductor.sync.reply` span in the process trace links back to the caller's — so each can be reached from the other without the process becoming a child of one request.
 
 ### Forms engine

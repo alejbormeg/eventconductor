@@ -99,6 +99,47 @@ class StartStepExecutionUseCaseTest {
         assertThat(topic.getValue()).isNull();
     }
 
+    /**
+     * A built-in task's default topic — {@code http-calls}, {@code llm-calls} — is where its worker
+     * listens, and where cancellation is sent; the dispatch has to go to the same place. It went to
+     * the default {@code downstream} when the step itself named no topic.
+     */
+    @Test
+    void aBuiltInTaskWithNoTopicGoesToItsOwnDefaultTopic() {
+        Step step = new Step("s1", "wd-1", StepType.HTTP_CALL, "Step", null, null, null, null, false, null, null, null, null, null, 0, null, null, null, null, 0, 0, false, null, 0, null);
+        var se = StepExecution.builder()
+                .id("se-1").processId("p-1").workflowDefinitionId("wd-1").stepId("s1")
+                .stepJson(JsonSerializer.toJson(step))
+                .status(StepExecutionStatus.PENDING).variables(List.of()).build();
+        when(stepExecutionRepository.findById("se-1")).thenReturn(Optional.of(se));
+
+        useCase.handle(new StartStepExecutionCommand("se-1"));
+
+        ArgumentCaptor<TaskExecutionRequested> event = ArgumentCaptor.forClass(TaskExecutionRequested.class);
+        ArgumentCaptor<String> topic = ArgumentCaptor.forClass(String.class);
+        verify(downstreamEventPublisher).publish(event.capture(), topic.capture());
+        assertThat(event.getValue().taskId()).isEqualTo("http-call@1");
+        assertThat(topic.getValue()).isEqualTo("http-calls");
+    }
+
+    @Test
+    void anLlmCallGoesToTheLlmTaskOnItsOwnTopic() {
+        Step step = new Step("s1", "wd-1", StepType.LLM_CALL, "Step", null, null, null, null, false, null, null, null, null, null, 0, null, null, null, null, 0, 0, false, null, 0, null);
+        var se = StepExecution.builder()
+                .id("se-1").processId("p-1").workflowDefinitionId("wd-1").stepId("s1")
+                .stepJson(JsonSerializer.toJson(step))
+                .status(StepExecutionStatus.PENDING).variables(List.of()).build();
+        when(stepExecutionRepository.findById("se-1")).thenReturn(Optional.of(se));
+
+        useCase.handle(new StartStepExecutionCommand("se-1"));
+
+        ArgumentCaptor<TaskExecutionRequested> event = ArgumentCaptor.forClass(TaskExecutionRequested.class);
+        ArgumentCaptor<String> topic = ArgumentCaptor.forClass(String.class);
+        verify(downstreamEventPublisher).publish(event.capture(), topic.capture());
+        assertThat(event.getValue().taskId()).isEqualTo("llm-call@1");
+        assertThat(topic.getValue()).isEqualTo("llm-calls");
+    }
+
     @Test
     void setsCompleteFormTaskIdForUserTaskStep() {
         var se = seWith(StepExecutionStatus.PENDING, StepType.USER_TASK, "form-1");

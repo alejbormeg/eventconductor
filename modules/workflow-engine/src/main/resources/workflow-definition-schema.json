@@ -387,7 +387,8 @@
             "UNLOCK",
             "REPLY",
             "PUBLISH_EVENT",
-            "HTTP_CALL"
+            "HTTP_CALL",
+            "LLM_CALL"
           ]
         },
         "name": {
@@ -574,6 +575,24 @@
             "retryOn": { "type": ["array", "null"], "items": { "type": "string" }, "description": "Failures the step's retries apply to: 5xx, 4xx, io or specific codes. Default [5xx, io] — a 4xx is not retried." }
           }
         },
+        "llm": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "description": "LLM_CALL only: what to ask a language model. The engine renders system and prompt from the process state; the built-in llm-call worker task calls the model on a named connection (provider, model and API key are configuration, never the definition's).",
+          "properties": {
+            "connection": { "type": "string", "minLength": 1, "description": "A named connection (workflow.llm.connections.<name>): provider (anthropic, openai), model, base URL, API key, defaults." },
+            "model": { "type": ["string", "null"], "description": "Overrides the connection's model, e.g. claude-sonnet-5-5." },
+            "system": { "type": ["string", "null"], "description": "The system prompt (text template over the process variables)." },
+            "prompt": { "type": "string", "minLength": 1, "description": "The user message (text template over the process variables)." },
+            "temperature": { "type": ["number", "null"], "minimum": 0, "maximum": 2, "description": "Sampling temperature. Omitted unless set — current Claude models accept only the default." },
+            "maxTokens": { "type": ["integer", "null"], "minimum": 1, "description": "The most output tokens. Default the connection's (4096)." },
+            "responseSchema": { "type": ["object", "null"], "description": "A JSON Schema: the answer must be one JSON document valid against it. Parsed and validated; an invalid answer fails the step (LLM_INVALID_OUTPUT, retried per retries)." },
+            "output": { "type": ["object", "null"], "additionalProperties": { "type": "string" }, "description": "Process variable → JEXL over {text, json, usage, model, finishReason} (json: the parsed answer, with responseSchema)." },
+            "outputVariable": { "type": ["string", "null"], "description": "The variable that receives the answer's text (with responseSchema, the JSON document)." },
+            "usageVariable": { "type": ["string", "null"], "description": "The variable that receives the token usage: {model, inputTokens, outputTokens, totalTokens}." }
+          },
+          "required": ["connection", "prompt"]
+        },
         "event": {
           "type": [
             "object",
@@ -650,7 +669,7 @@
         },
         "deadline": {
           "anyOf": [{ "$ref": "#/$defs/Moment" }, { "type": "null" }],
-          "description": "ACTION, USER_TASK, RULE, WAIT_FOR_MESSAGE, PROCESS, HTTP_CALL: a moment by which the step must have finished, from the process's data ({date, offset, at, zone}, no ifPast). Reaching it is a timeout (onTimeoutStepId or failure) that retries do not extend; with timeout too, the earlier wins."
+          "description": "ACTION, USER_TASK, RULE, WAIT_FOR_MESSAGE, PROCESS, HTTP_CALL, LLM_CALL: a moment by which the step must have finished, from the process's data ({date, offset, at, zone}, no ifPast). Reaching it is a timeout (onTimeoutStepId or failure) that retries do not extend; with timeout too, the earlier wins."
         },
         "retries": {
           "type": [
@@ -882,6 +901,10 @@
         {
           "if": { "properties": { "type": { "const": "HTTP_CALL" } }, "required": ["type"] },
           "then": { "required": ["http"] }
+        },
+        {
+          "if": { "properties": { "type": { "const": "LLM_CALL" } }, "required": ["type"] },
+          "then": { "required": ["llm"] }
         },
         {
           "if": {

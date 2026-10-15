@@ -1,0 +1,19 @@
+{
+  "id": "llm-call-render",
+  "name": "Triage a complaint with a model",
+  "version": 1,
+  "steps": [
+    { "id": "start", "type": "START", "name": "Start" },
+    { "id": "triage", "type": "LLM_CALL", "name": "Triage", "preconditionStepId": "start", "retries": 2,
+      "llm": {
+        "connection": "claude",
+        "model": "claude-sonnet-5-5",
+        "system": "You triage complaints for booking ${bookingId}.",
+        "prompt": "${guest} wrote: ${complaint}",
+        "maxTokens": 256,
+        "responseSchema": { "type": "object", "required": ["category"] },
+        "output": { "category": "json.category" }
+      } },
+    { "id": "end", "type": "END", "name": "End", "preconditionStepId": "triage" }
+  ]
+}

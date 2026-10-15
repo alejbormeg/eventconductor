@@ -245,7 +245,10 @@ public record Step(
          * {@code timeout}, it does not restart with a retry. With {@code timeout} too, the earlier wins.
          */
         @Hidden
-        Moment deadline
+        Moment deadline,
+        /** LLM_CALL only: what to ask the model and where its answer goes (see {@link LlmCall}). */
+        @Hidden
+        LlmCall llm
 ) implements Identifiable {
 
     public Step {
@@ -390,6 +393,26 @@ public record Step(
                 correlationExpression, messageVariables, timeout, retries, compensable, compensationStepId,
                 onTimeoutStepId, maxSuccessfulExecutions, joinType, requiredScopes, requiredRoles,
                 lockName, lockKey, task, replyVariables, replyExpression, replyTemplate, event, http, null, null);
+    }
+
+    /** The shape this record had before LLM_CALL, so every caller of the full constructor keeps compiling. */
+    public Step(String id, String workflowDefinitionId, StepType type, String name, String description,
+                String preconditionStepId, List<String> preconditionStepIds, List<Precondition> preconditions,
+                String preconditionExpression, boolean parallel, String topic, String formId, String ruleId,
+                String childWorkflowDefinitionId, List<String> outputVariables, long duration,
+                String untilVariable, String messageName, String correlationExpression,
+                List<String> messageVariables, long timeout, int retries, boolean compensable,
+                String compensationStepId, String onTimeoutStepId, int maxSuccessfulExecutions,
+                JoinType joinType, List<String> requiredScopes, List<String> requiredRoles,
+                String lockName, String lockKey, String task, List<String> replyVariables,
+                String replyExpression, Object replyTemplate, PublishEvent event, HttpCall http,
+                Moment until, Moment deadline) {
+        this(id, workflowDefinitionId, type, name, description, preconditionStepId, preconditionStepIds,
+                preconditions, preconditionExpression, parallel, topic, formId, ruleId,
+                childWorkflowDefinitionId, outputVariables, duration, untilVariable, messageName,
+                correlationExpression, messageVariables, timeout, retries, compensable, compensationStepId,
+                onTimeoutStepId, maxSuccessfulExecutions, joinType, requiredScopes, requiredRoles,
+                lockName, lockKey, task, replyVariables, replyExpression, replyTemplate, event, http, until, deadline, null);
     }
 
     /**

@@ -1,0 +1,31 @@
+{
+  "id": "llm-call-saga",
+  "name": "Log a complaint, triage it with a model, answer the caller",
+  "version": 1,
+  "syncInvocation": { "enabled": true },
+  "steps": [
+    { "id": "start", "type": "START", "name": "Start" },
+    { "id": "log", "type": "ACTION", "name": "Log the complaint", "topic": "log", "preconditionStepId": "start",
+      "compensable": true, "compensationStepId": "unlog" },
+    { "id": "triage", "type": "LLM_CALL", "name": "Triage", "preconditionStepId": "log", "retries": 2,
+      "llm": {
+        "connection": "claude",
+        "system": "You triage hotel guest complaints.",
+        "prompt": "Booking ${bookingId}: ${complaint}",
+        "responseSchema": {
+          "type": "object",
+          "required": ["category", "urgency"],
+          "properties": {
+            "category": { "type": "string", "enum": ["room", "billing", "staff", "other"] },
+            "urgency": { "type": "integer", "minimum": 1, "maximum": 5 }
+          }
+        },
+        "output": { "category": "json.category", "urgency": "json.urgency" },
+        "usageVariable": "triageUsage"
+      } },
+    { "id": "reply", "type": "REPLY", "name": "Reply", "preconditionStepId": "triage",
+      "replyTemplate": { "bookingId": "${bookingId}", "category": "${category}", "urgency": "${urgency * 1}" } },
+    { "id": "end", "type": "END", "name": "End", "preconditionStepId": "reply" },
+    { "id": "unlog", "type": "ACTION", "name": "Unlog", "topic": "unlog" }
+  ]
+}

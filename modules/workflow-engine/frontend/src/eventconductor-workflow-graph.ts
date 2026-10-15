@@ -50,7 +50,7 @@ if (typeof window !== "undefined" && !window.__ecClipboardBridge) {
 type StepType =
     | "START" | "ACTION" | "USER_TASK" | "RULE" | "TIMER"
     | "WAIT_FOR_MESSAGE" | "SEND_MESSAGE" | "FORK" | "JOIN" | "CHOICE" | "PROCESS" | "END" | "DYNAMIC"
-    | "LOCK" | "UNLOCK" | "REPLY" | "PUBLISH_EVENT" | "HTTP_CALL";
+    | "LOCK" | "UNLOCK" | "REPLY" | "PUBLISH_EVENT" | "HTTP_CALL" | "LLM_CALL";
 /** Whether a workflow is open for business. DRAFT is an older value that meant nothing. */
 type WorkflowStatus = "ACTIVE" | "DISABLED" | "ARCHIVED" | "DRAFT";
 
@@ -89,6 +89,8 @@ interface WorkflowStep {
     event?: { destination?: string; type?: string; key?: string };
     /** HTTP_CALL only: the request to make. */
     http?: { connection?: string; url?: string; method?: string; path?: string };
+    /** LLM_CALL only: what to ask the model. */
+    llm?: { connection?: string; model?: string; responseSchema?: unknown };
     /** TIMER only: wait a duration, until a variable's date, or until a moment. */
     duration?: number | string;
     untilVariable?: string;
@@ -223,7 +225,7 @@ const PAD = 60;
 const STEP_TYPES: StepType[] = [
     "START", "ACTION", "USER_TASK", "RULE", "TIMER",
     "WAIT_FOR_MESSAGE", "SEND_MESSAGE", "FORK", "JOIN", "CHOICE", "PROCESS", "END", "DYNAMIC",
-    "LOCK", "UNLOCK", "REPLY", "PUBLISH_EVENT", "HTTP_CALL",
+    "LOCK", "UNLOCK", "REPLY", "PUBLISH_EVENT", "HTTP_CALL", "LLM_CALL",
 ];
 
 /**
@@ -281,6 +283,8 @@ const NODE_STYLE: Record<StepType, NodeStyle> = {
     // Engine-side integrations: a domain event broadcast out (sky), an HTTP call out (blue).
     PUBLISH_EVENT:    {fill: "#f0f9ff", stroke: "#0284c7", symbol: "broadcast"},
     HTTP_CALL:        {fill: "#eff6ff", stroke: "#2563eb", symbol: "globe"},
+    // A language model asked a question: violet, with a sparkle — a colour no other step uses.
+    LLM_CALL:         {fill: "#f5f3ff", stroke: "#7c3aed", symbol: "sparkle"},
 };
 /**
  * The paint properties written onto each element when the graph is exported as a standalone SVG.
@@ -342,7 +346,8 @@ function isGatewayType(t: StepType): boolean { return t === "FORK" || t === "JOI
  */
 function isTaskStepType(t: StepType): boolean {
     return t === "ACTION" || t === "USER_TASK" || t === "RULE"
-        || t === "WAIT_FOR_MESSAGE" || t === "PROCESS" || t === "DYNAMIC" || t === "HTTP_CALL";
+        || t === "WAIT_FOR_MESSAGE" || t === "PROCESS" || t === "DYNAMIC" || t === "HTTP_CALL"
+        || t === "LLM_CALL";
 }
 /** A timeout in ms as a short human string: 30000 → "30s", 90000 → "1m 30s", 120000 → "2m". */
 function formatTimeout(ms: number): string {
@@ -378,6 +383,8 @@ const SYMBOLS: Record<string, ReturnType<typeof svg>> = {
     broadcast: svg`<circle cx="3" cy="6" r="1.2"/><path d="M5.5 3.5 Q7 6 5.5 8.5"/><path d="M8 1.8 Q10.5 6 8 10.2"/>`,
     // A globe — a call out over the network.
     globe:     svg`<circle cx="6" cy="6" r="5"/><path d="M1 6 H11"/><path d="M6 1 Q9 6 6 11 Q3 6 6 1"/>`,
+    // A four-pointed sparkle with a small companion — a language model asked a question.
+    sparkle:   svg`<path d="M5 1 Q5.6 4.4 9 5 Q5.6 5.6 5 9 Q4.4 5.6 1 5 Q4.4 4.4 5 1 Z"/><path d="M9.5 8 Q9.7 9.3 11 9.5 Q9.7 9.7 9.5 11 Q9.3 9.7 8 9.5 Q9.3 9.3 9.5 8 Z"/>`,
 };
 
 /**
@@ -427,6 +434,7 @@ function badgeOf(step: WorkflowStep): string {
             ? step.replyVariables.join(", ") : (step.replyExpression ? "expression" : "REPLY"));
         case "PUBLISH_EVENT": return "📣 " + (step.event?.destination || "event");
         case "HTTP_CALL": return (step.http?.method || "GET") + " " + (step.http?.connection || step.http?.url || "http");
+        case "LLM_CALL": return "✦ " + (step.llm?.connection || "llm") + (step.llm?.model ? " · " + step.llm.model : "");
         case "TIMER": return "⏱ " + (step.until ? describeMoment(step.until)
             : step.untilVariable ? "until " + step.untilVariable
             : step.duration ? String(step.duration) : "TIMER");
@@ -3561,6 +3569,10 @@ export class MateuWorkflowElk extends LitElement {
                         <input class="inp" readonly title="Edit the http block in the YAML"
                                .value="${(step.http?.method || "GET") + " " + (step.http?.connection
                                    ? step.http.connection + (step.http.path || "") : (step.http?.url || ""))}"/>`) : ""}
+                    ${step.type === "LLM_CALL" ? field("LLM", html`
+                        <input class="inp" readonly title="Edit the llm block in the YAML"
+                               .value="${(step.llm?.connection || "") + (step.llm?.model ? " · " + step.llm.model : "")
+                                   + (step.llm?.responseSchema ? " → JSON" : "")}"/>`) : ""}
                     ${step.type === "TIMER" && step.until ? field("Until", html`
                         <input class="inp" readonly title="Edit the until block in the YAML"
                                .value="${describeMoment(step.until)}"/>`) : ""}

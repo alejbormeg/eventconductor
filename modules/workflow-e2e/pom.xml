@@ -80,6 +80,13 @@
             <version>1.0-SNAPSHOT</version>
             <scope>test</scope>
         </dependency>
+        <!-- The built-in llm-call task, driven through the engine against a stub model. -->
+        <dependency>
+            <groupId>io.mateu.workflow</groupId>
+            <artifactId>worker-llm</artifactId>
+            <version>1.0-SNAPSHOT</version>
+            <scope>test</scope>
+        </dependency>
         <!-- The distributed suite (real Kafka + PostgreSQL via Testcontainers) lives in the
              separate, Docker-gated modules/workflow-dist-e2e module. -->
     </dependencies>

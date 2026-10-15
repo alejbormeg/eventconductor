@@ -14,6 +14,8 @@ Events are serialized as JSON with a `type` property carrying the registered eve
 | `outbox` | Internal | Domain events relayed from the outbox table |
 | `upstream` | Inbound | Integration events from external services |
 | `downstream` | Outbound | Task execution requests sent to workers |
+| `http-calls` | Outbound | `HTTP_CALL` requests, served by `http-worker-standalone-app` (a step's `topic` overrides) |
+| `llm-calls` | Outbound | `LLM_CALL` prompts, served by `llm-worker-standalone-app` (a step's `topic` overrides) |
 
 ## outbox
 

@@ -186,7 +186,8 @@ public class StepExecutionDBRepository implements StepExecutionRepository {
      * because it is the same question — everything else waits without a deadline on purpose.
      */
     private static final List<String> AWAITING_A_WORKER =
-            List.of(StepType.ACTION.name(), StepType.RULE.name(), StepType.HTTP_CALL.name());
+            List.of(StepType.ACTION.name(), StepType.RULE.name(), StepType.HTTP_CALL.name(),
+                    StepType.LLM_CALL.name());
 
     @Override
     public long countStalled(LocalDateTime startedBefore) {

@@ -72,6 +72,7 @@ export default defineConfig({
 						{ label: 'Starting a Process', slug: 'guides/starting-a-process' },
 						{ label: 'Synchronous Invocation', slug: 'guides/synchronous-invocation' },
 						{ label: 'HTTP Calls', slug: 'guides/http-calls' },
+						{ label: 'LLM Calls', slug: 'guides/llm-calls' },
 						{ label: 'Publishing Domain Events', slug: 'guides/publishing-events' },
 						{ label: 'Payload Templates', slug: 'guides/payload-templates' },
 						{ label: 'Scheduling and Deadlines', slug: 'guides/scheduling-and-deadlines' },

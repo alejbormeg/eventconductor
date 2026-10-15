@@ -291,6 +291,10 @@ public final class StepExecution extends AggregateRoot implements Identifiable {
                 // HTTP egress on a topic of its own, so it can be scaled and network-policed apart.
                 return io.mateu.workflow.domain.services.HttpRequestRenderer.DEFAULT_TOPIC;
             }
+            if (StepType.LLM_CALL.equals(step.type()) && (step.topic() == null || step.topic().isBlank())) {
+                // Model egress (and its API keys) on a topic of its own, like HTTP_CALL's.
+                return io.mateu.workflow.domain.services.LlmRequestRenderer.DEFAULT_TOPIC;
+            }
             return step.topic();
         } catch (RuntimeException e) {
             return null;
@@ -506,6 +510,25 @@ public final class StepExecution extends AggregateRoot implements Identifiable {
             this.variables = taskVariables;
             send(new TaskExecutionRequested(id, processId, workflowDefinitionId, stepId,
                     io.mateu.workflow.domain.services.HttpRequestRenderer.TASK_ID, taskVariables.stream()
+                    .map(variable -> new io.mateu.workflow.dtos.Variable(variable.name(), variable.value()))
+                    .toList()));
+        } else if (StepType.LLM_CALL.equals(step.type())) {
+            // The prompts are rendered here, from the process as it stands, then dispatched to the
+            // built-in llm-call worker task like any worker step — as HTTP_CALL does.
+            String request;
+            try {
+                request = io.mateu.workflow.domain.services.LlmRequestRenderer.render(step, process, id);
+            } catch (RuntimeException e) {
+                send(new TaskLogEmitted(id, MessageType.Error,
+                        "Step " + step.name() + ": the LLM prompt could not be rendered: " + e.getMessage()));
+                updateStatus(StepExecutionStatus.ERROR);
+                return this;
+            }
+            var taskVariables = new ArrayList<>(variables);
+            taskVariables.add(new Variable(io.mateu.workflow.domain.services.LlmRequestRenderer.REQUEST_VARIABLE, request));
+            this.variables = taskVariables;
+            send(new TaskExecutionRequested(id, processId, workflowDefinitionId, stepId,
+                    io.mateu.workflow.domain.services.LlmRequestRenderer.TASK_ID, taskVariables.stream()
                     .map(variable -> new io.mateu.workflow.dtos.Variable(variable.name(), variable.value()))
                     .toList()));
         } else if (StepType.PUBLISH_EVENT.equals(step.type())) {

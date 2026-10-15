@@ -1,0 +1,51 @@
+server:
+  port: ${SERVER_PORT:8093}
+
+spring:
+  application:
+    name: llm-worker
+  cloud:
+    stream:
+      bindingRetryInterval: 10
+      kafka:
+        default:
+          producer:
+            # A reply is only delivered when the broker says so — see PartitionedEvents in the engine.
+            sync: true
+        binder:
+          brokers: ${KAFKA_BROKERS:localhost:9092}
+          auto-create-topics: true
+          configuration:
+            default.api.timeout.ms: 15000
+            request.timeout.ms: 10000
+      bindings:
+        # The rendered prompts of LLM_CALL steps (the engine's default topic for them).
+        consumeWorkerEvent-in-0:
+          destination: ${LLM_CALLS_TOPIC:llm-calls}
+          group: llm-worker
+          consumer:
+            start-offset: earliest
+
+workflow:
+  llm:
+    # Connections are deployment configuration; a definition names one and never holds a key. More can
+    # be added with environment variables, e.g. WORKFLOW_LLM_CONNECTIONS_GPT_PROVIDER=openai,
+    # WORKFLOW_LLM_CONNECTIONS_GPT_MODEL=..., WORKFLOW_LLM_CONNECTIONS_GPT_APIKEY=...
+    connections:
+      claude:
+        provider: anthropic
+        model: ${CLAUDE_MODEL:claude-sonnet-5-5}
+        api-key: ${ANTHROPIC_API_KEY:}
+        timeout: ${CLAUDE_TIMEOUT:PT60S}
+      local:
+        # Any OpenAI-compatible endpoint (vLLM, Ollama, LiteLLM…).
+        provider: openai
+        base-url: ${LOCAL_LLM_BASE_URL:http://localhost:11434}
+        model: ${LOCAL_LLM_MODEL:local-model}
+        api-key: ${LOCAL_LLM_API_KEY:}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
