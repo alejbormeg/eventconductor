@@ -202,7 +202,7 @@ Dispatches `taskId=evaluate-rule` with a `ruleId` variable; any app embedding `r
 ```
 Pauses the process without a worker: the step stays `PENDING` and the scheduler completes it once the due moment passes; the wait survives restarts. `duration` is ISO-8601 or ms; `untilVariable` names a process variable holding an ISO-8601 date/date-time and takes precedence. A misconfigured timer ends the step `ERROR` through the normal failure pipeline.
 
-`until` waits for a **moment** from the process's data: `{"date": "${checkinDate}", "offset": "-P3D", "at": "09:00", "zone": "${hotelZone}", "ifPast": "fire"}` (or a date template alone). `offset` days are calendar arithmetic in `zone` (DST-safe); `zone` defaults to `workflow.time.zone`. `ifPast`: `fire` (default, complete at once) or `timeout` (end TIMEOUT → `onTimeoutStepId` or failure; no retries). Unlike `untilVariable`, an `until` moment **follows the variables** while the timer waits (recomputed on every variable change; a cleared date keeps the armed moment). Any waiting step (ACTION, USER_TASK, RULE, WAIT_FOR_MESSAGE, PROCESS, HTTP_CALL) can have a `deadline` (same moment, no `ifPast`): reaching it is a timeout that retries do not extend; with `timeout`, the earlier wins.
+`until` waits for a **moment** from the process's data: `{"date": "${checkinDate}", "offset": "-P3D", "at": "09:00", "zone": "${hotelZone}", "ifPast": "fire"}` (or a date template alone). `offset` days are calendar arithmetic in `zone` (DST-safe); `zone` defaults to `workflow.time.zone`. `ifPast`: `fire` (default, complete at once) or `timeout` (end TIMEOUT → `onTimeoutStepId` or failure; no retries). Unlike `untilVariable`, an `until` moment **follows the variables** while the timer waits (recomputed on every variable change; a cleared date keeps the armed moment). Any waiting step (ACTION, USER_TASK, RULE, WAIT_FOR_MESSAGE, PROCESS, HTTP_CALL, LLM_CALL) can have a `deadline` (same moment, no `ifPast`): reaching it is a timeout that retries do not extend; with `timeout`, the earlier wins.
 
 ### WAIT_FOR_MESSAGE — wait for a message
 ```json
@@ -286,6 +286,15 @@ No worker. The event (payload from a structured `payload` template, a text `payl
 ```
 The engine renders the request (templates in url/path, query, headers, body) and dispatches the built-in task `http-call@1` (library `worker-http`: embedded in the engine's pod, or topic `http-calls` served by `http-worker-standalone-app`). `successStatus` (default 2xx) completes and maps `output` (JEXL over `{status, headers, body}`) into variables; otherwise `HTTP_<status>` / `HTTP_IO`, retried only if `retryOn` (default `[5xx, io]`) covers it — a 4xx is final and compensation runs. `Idempotency-Key` = step execution id. Auth: named profile (`workflow.http.auth.<name>`) or inline with `${secret:NAME}` credentials only; absolute URLs subject to `workflow.http.allowed-hosts` and never internal addresses.
 
+### LLM_CALL — ask a language model
+```json
+{ "id": "triage", "type": "LLM_CALL", "name": "Triage", "preconditionStepId": "log", "retries": 2,
+  "llm": { "connection": "claude", "system": "You triage complaints.", "prompt": "${guestName} wrote: ${complaint}",
+           "responseSchema": { "type": "object", "required": ["category"] },
+           "output": { "category": "json.category" }, "usageVariable": "triageUsage" } }
+```
+The engine renders `system` and `prompt` (text templates) and dispatches the built-in task `llm-call@1` (library `worker-llm` on Spring AI, with `spring-ai-anthropic` and/or `spring-ai-openai`: embedded in the engine's pod, or topic `llm-calls` served by `llm-worker-standalone-app`). Connections are configuration: `workflow.llm.connections.<name>` = `provider` (`anthropic` | `openai`), `model`, `api-key`, `base-url`, `temperature`, `max-tokens` (4096), `timeout` (PT60S), `structured-output` (`prompt` | `native`). A step may override `model`, `temperature`, `maxTokens`. With `responseSchema` the answer must be one JSON document valid against it (`LLM_INVALID_OUTPUT` otherwise, retried). Answer → `outputVariable` (text / JSON) and `output` (JEXL over `{text, json, usage, model, finishReason}`); token usage → `usageVariable`. Provider 4xx → `LLM_<status>`, final; 408/409/429/5xx and `LLM_IO` retried. Metrics: `eventconductor.llm.call{workflow,step,connection,model,outcome}`, `eventconductor.llm.tokens{workflow,step,connection,model,type}`.
+
 ### END — complete the process
 ```json
 { "id": "end", "type": "END", "name": "Done", "preconditionStepId": "last-step" }
@@ -297,7 +306,7 @@ Exactly one per workflow. Transitions the process to `COMPLETED`. With parallel 
 | Field | Type | Default | Description |
 |---|---|---|---|
 | `id` | string | — | Unique within the workflow |
-| `type` | enum | — | `START`/`ACTION`/`USER_TASK`/`RULE`/`TIMER`/`WAIT_FOR_MESSAGE`/`SEND_MESSAGE`/`PROCESS`/`FORK`/`JOIN`/`LOCK`/`UNLOCK`/`REPLY`/`PUBLISH_EVENT`/`HTTP_CALL`/`END` |
+| `type` | enum | — | `START`/`ACTION`/`USER_TASK`/`RULE`/`TIMER`/`WAIT_FOR_MESSAGE`/`SEND_MESSAGE`/`PROCESS`/`FORK`/`JOIN`/`LOCK`/`UNLOCK`/`REPLY`/`PUBLISH_EVENT`/`HTTP_CALL`/`LLM_CALL`/`END` |
 | `name` | string | — | Human-readable |
 | `description` | string | — | Optional |
 | `preconditionStepId` | string | — | Single step that must complete first |
@@ -330,6 +339,7 @@ Exactly one per workflow. Transitions the process to `COMPLETED`. With parallel 
 | `replyTemplate` | any | — | REPLY: the reply as a payload template (JSON/YAML with `${…}` leaves) |
 | `event` | object | — | PUBLISH_EVENT: `{destination, type, key?, payload \| payloadTemplate \| payloadVariables, format?}` |
 | `http` | object | — | HTTP_CALL: `{connection + path \| url, method, query, headers, body \| bodyTemplate, successStatus, output, auth, retryOn}` |
+| `llm` | object | — | LLM_CALL: `{connection, model, system, prompt, temperature, maxTokens, responseSchema, output, outputVariable, usageVariable}` |
 
 ---
 

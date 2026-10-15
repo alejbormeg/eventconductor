@@ -340,6 +340,21 @@ Only relevant to definitions that declare `syncInvocation`; see [Synchronous Inv
 | `workflow.http.connect-timeout` / `read-timeout` | `PT5S` / `PT30S` | Timeouts for absolute URLs. |
 | `workflow.http.max-response-bytes` | `1048576` | Largest response read; larger fails the step. |
 
+### LLM calls (`workflow.llm.*`, in whatever runs `worker-llm`)
+
+| Property | Default | Description |
+|---|---|---|
+| `workflow.llm.enabled` | `true` | Register the built-in `llm-call@1` task. |
+| `workflow.llm.topic` | `llm-calls` | The Kafka topic the task is served on. |
+| `workflow.llm.connections.<name>.provider` | `anthropic` | `anthropic` or `openai` (OpenAI and any OpenAI-compatible endpoint). Needs `spring-ai-anthropic` / `spring-ai-openai` on the classpath. |
+| `workflow.llm.connections.<name>.model` | — | The model steps use unless they name another (e.g. `claude-sonnet-5-5`). |
+| `workflow.llm.connections.<name>.api-key` | — | Required. Configuration only — from an env var, a K8s secret, Vault; never in a definition. |
+| `workflow.llm.connections.<name>.base-url` | the provider's | A gateway, a proxy or a self-hosted OpenAI-compatible server. |
+| `workflow.llm.connections.<name>.temperature` | *(unset)* | Default temperature; unset sends none (current Claude models accept only the default). |
+| `workflow.llm.connections.<name>.max-tokens` | `4096` | Default most output tokens. |
+| `workflow.llm.connections.<name>.timeout` | `PT60S` | One call's limit; a longer one fails the step as `LLM_IO` (retried). |
+| `workflow.llm.connections.<name>.structured-output` | `prompt` | How a `responseSchema` is enforced: `prompt` (in the system prompt, then validated) or `native` (also the provider's structured output). |
+
 ## Kafka (when `workflow.mode=kafka`)
 
 ```properties

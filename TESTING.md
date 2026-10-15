@@ -245,6 +245,13 @@ compensated, 5xx retried), and `ReplyStepE2eTest` (`replyTemplate`). Units: `Tem
 `HttpRequestRendererTest`, and `modules/worker-http` (`HttpCallHandlerTest`, `HostGuardTest`,
 `SecretResolverTest`).
 
+LLM_CALL (`modules/workflow-e2e`): `LlmCallDispatchE2eTest` (the rendered prompts reach `llm-call@1`; a
+final failure — a provider 4xx — skips retries; an ordinary one spends them) and `LlmCallE2eTest` (the real
+`worker-llm` against a stub `ChatModel`: structured answer → variables → REPLY, usage and metrics; an
+answer that never matches its `responseSchema` spends the retries and the saga compensates). Units:
+`LlmCallRulesTest`, `LlmRequestRendererTest`, `SpecValidatorTest`, and `modules/worker-llm`
+(`LlmCallHandlerTest`: no provider is ever called). Provider APIs are never called from CI.
+
 ## 7. The UI, in a browser (`modules/workflow-ui-e2e`)
 
 Everything above drives the engine through its ports. These drive it the way an operator does:

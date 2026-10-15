@@ -1,9 +1,9 @@
 ---
 title: Payload Templates
-description: Build JSON (or any text) from a process's state — for REPLY, PUBLISH_EVENT and HTTP_CALL — with sandboxed JEXL expressions.
+description: Build JSON (or any text) from a process's state — for REPLY, PUBLISH_EVENT, HTTP_CALL and LLM_CALL — with sandboxed JEXL expressions.
 ---
 
-A **payload template** turns the process's state into a payload: the reply a `REPLY` step gives, the data of an event a `PUBLISH_EVENT` step publishes, the body (and URL, query and headers) of an `HTTP_CALL`. Expressions go in `${…}` and are JEXL, evaluated in the same sandbox as every other expression in a definition — no loops, lambdas, side effects or reflection, bounded size — because a definition may come from git.
+A **payload template** turns the process's state into a payload: the reply a `REPLY` step gives, the data of an event a `PUBLISH_EVENT` step publishes, the body (and URL, query and headers) of an `HTTP_CALL`, the prompts of an `LLM_CALL`. Expressions go in `${…}` and are JEXL, evaluated in the same sandbox as every other expression in a definition — no loops, lambdas, side effects or reflection, bounded size — because a definition may come from git.
 
 ## Structured templates — JSON with typed leaves
 

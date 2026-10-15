@@ -46,7 +46,7 @@ Add `"$schema"` (JSON) or a `# yaml-language-server: $schema=...` comment (YAML)
 | `duration` | TIMER | wait length; ISO-8601 or ms |
 | `untilVariable` | TIMER | variable holding an ISO-8601 date/date-time; wins over `duration` |
 | `until` | TIMER | moment `{date, offset, at, zone, ifPast}` (or date template); follows variable changes; exclusive with duration/untilVariable |
-| `deadline` | ACTION/USER_TASK/RULE/WAIT_FOR_MESSAGE/PROCESS/HTTP_CALL | moment by which to finish; timeout that retries don't extend; earlier of it and `timeout` wins |
+| `deadline` | ACTION/USER_TASK/RULE/WAIT_FOR_MESSAGE/PROCESS/HTTP_CALL/LLM_CALL | moment by which to finish; timeout that retries don't extend; earlier of it and `timeout` wins |
 | `messageName` | WAIT_FOR_MESSAGE, SEND_MESSAGE | message to wait for / emit; **required** for both |
 | `correlationExpression` | WAIT_FOR_MESSAGE, SEND_MESSAGE | JEXL producing the correlation key; **required** for both (use `businessKey` for the business key) |
 | `messageVariables` | SEND_MESSAGE | array of process-variable names the message carries; empty/absent = none |
@@ -113,6 +113,13 @@ Add `"$schema"` (JSON) or a `# yaml-language-server: $schema=...` comment (YAML)
   final (no retries, compensation runs). Auth: connection's profile, a named profile
   (`workflow.http.auth.<name>`) or inline with credentials ONLY as `${secret:NAME}` (literal secrets
   fail validation). Absolute URLs: `workflow.http.allowed-hosts`, internal addresses always refused.
+- **LLM_CALL** — `llm: {connection, model?, system?, prompt, temperature?, maxTokens?, responseSchema?,
+  output?, outputVariable?, usageVariable?}` (one of output/outputVariable required). Engine renders
+  system/prompt (text templates) and dispatches built-in task `llm-call@1` (library `worker-llm`, Spring
+  AI; kafka topic `llm-calls`, app `llm-worker-standalone-app`). `responseSchema` → the answer must be
+  JSON valid against it (`LLM_INVALID_OUTPUT`, retried). `output`: variable ← JEXL over `{text, json,
+  usage, model, finishReason}`. Provider 4xx final; 429/5xx/timeouts retried. Keys ONLY in
+  `workflow.llm.connections.<name>.api-key` — no key or `${secret:}` in the block (fails validation).
   Retries send the same `Idempotency-Key` (step execution id).
 - **Payload templates** (replyTemplate, event payload, http body/url/path/query/headers): JSON/YAML
   whose string leaves hold `${JEXL}`; a leaf that is exactly one expression keeps its type (a variable
