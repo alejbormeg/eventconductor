@@ -38,6 +38,12 @@ public class WorkflowMenu {
     Schedules schedules;
 
     @Menu
+    io.mateu.workflow.infra.in.ui.pages.events.EventTriggers eventTriggers;
+
+    @Menu
+    io.mateu.workflow.infra.in.ui.pages.events.ReceivedEvents receivedEvents;
+
+    @Menu
     Analytics analytics;
 
 }

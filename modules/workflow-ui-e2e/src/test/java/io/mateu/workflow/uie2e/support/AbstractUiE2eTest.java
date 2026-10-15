@@ -107,7 +107,9 @@ public abstract class AbstractUiE2eTest {
                 // an assertion about test order.
                 "received_task", "task_override",
                 // Schedules created by a journey, and their pauses.
-                "cron_schedule_pause", "cron_schedule")) {
+                "cron_schedule_pause", "cron_schedule",
+                // Received domain events and paused triggers.
+                "inbound_event_receipt", "event_trigger_pause")) {
             jdbc.execute("delete from " + table);
         }
     }
