@@ -66,10 +66,13 @@ public class CheckStepTimeoutHandler {
 
         // A deadline is a business moment, not a per-attempt budget: once reached, a retry would
         // start past it, so the step's retries are not spent on it.
-        stepExecution.updateStatus(StepExecutionStatus.TIMEOUT, !byTimeout);
+        if (step.type() == io.mateu.workflow.domain.aggregates.StepType.AGENT) stepExecution.holdAgent("TIMEOUT");
+        else stepExecution.updateStatus(StepExecutionStatus.TIMEOUT, !byTimeout);
         // Parked for its retry in this same transaction when attempts remain, so the TIMEOUT is
         // never read as final in between (see AutoRetryService).
-        autoRetryService.parkForRetryIfAttemptsLeft(stepExecution, !byTimeout);
+        boolean reviewHoldsRetry = stepExecutionRepository.findByProcessId(stepExecution.getProcessId()).stream()
+                .anyMatch(execution -> execution.getStatus() == StepExecutionStatus.REVIEW_REQUIRED);
+        if (!reviewHoldsRetry) autoRetryService.parkForRetryIfAttemptsLeft(stepExecution, !byTimeout);
         stepExecutionRepository.save(stepExecution);
 
         workflowMetrics.stepExecutionFinished(stepExecution.getWorkflowDefinitionId(),

@@ -71,7 +71,7 @@ public class ProcessUpdateStepExecutionUpdateUseCase {
                 // a lone retrying step would read as a completed process.
                 // WAITING_ON_LOCK is a step queued behind a lock holder: it will run once the lock
                 // frees, so it keeps the process in flight just the same.
-                case PENDING, RUNNING, AWAITING_RETRY, WAITING_ON_LOCK -> anyLive = true;
+                case PENDING, RUNNING, AWAITING_RETRY, WAITING_ON_LOCK, REVIEW_REQUIRED -> anyLive = true;
                 // A step in a final failure state (retries already exhausted — a step with retries
                 // left is parked in AWAITING_RETRY, counted as live above) means the process failed.
                 case ERROR -> anyFailed = true;

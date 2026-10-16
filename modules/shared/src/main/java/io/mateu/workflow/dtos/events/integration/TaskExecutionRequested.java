@@ -19,6 +19,8 @@ import java.util.List;
  * @param priority the step's {@code priority} (0–100, 2.33) when it declares one; null means the default, 50,
  *                and is left off the wire. Honoured by the HTTP worker queue and the embedded pool; a Kafka
  *                topic keeps its own order, so a Kafka worker may read it but nothing reorders the topic.
+ * @param invocationId AGENT steps only (2.34): the durable id of the agent invocation this task starts; the
+ *                runtime echoes it on its replies. Null, and left off the wire, for every other step.
  */
 public record TaskExecutionRequested(
         String taskExecutionId,
@@ -29,7 +31,9 @@ public record TaskExecutionRequested(
         List<Variable> variables,
         Integer attempt,
         @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
-        Integer priority) implements DomainEvent {
+        Integer priority,
+        @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+        String invocationId) implements DomainEvent {
 
     /** The shape before the attempt was carried: a task with no attempt is answered unchecked. */
     public TaskExecutionRequested(String taskExecutionId, String processId, String workflowDefinitionId,
@@ -46,6 +50,13 @@ public record TaskExecutionRequested(
     /** The priority it is served with: the step's declared one (0–100), or 50. */
     public int effectivePriority() {
         return priority == null ? 50 : Math.max(0, Math.min(100, priority));
+    }
+
+    /** The shape before AGENT invocations (2.34): no invocation id. */
+    public TaskExecutionRequested(String taskExecutionId, String processId, String workflowDefinitionId,
+                                  String stepId, String taskId, List<Variable> variables, Integer attempt,
+                                  Integer priority) {
+        this(taskExecutionId, processId, workflowDefinitionId, stepId, taskId, variables, attempt, priority, null);
     }
 
     @Override

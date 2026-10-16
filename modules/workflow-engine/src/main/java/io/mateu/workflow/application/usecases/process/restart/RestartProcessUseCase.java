@@ -87,6 +87,8 @@ public class RestartProcessUseCase {
         }
 
         var stepExecutions = stepExecutionRepository.findByProcess(process);
+        if (stepExecutions.stream().anyMatch(step -> step.getStatus()
+                == io.mateu.workflow.domain.aggregates.StepExecutionStatus.REVIEW_REQUIRED)) return;
         // Read before resetting: the reset is what clears the startedAt this reads.
         var initialVariables = variablesTheProcessStartedWith(stepExecutions);
 

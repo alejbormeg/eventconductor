@@ -14,7 +14,14 @@ import java.util.List;
  *                  unrouted behaviour instead of failing.
  */
 public record StepExecutionStatusChanged(String stepExecutionId, TaskStatus status, List<Variable> variables,
-                                         String processId, boolean nonRetryable) implements DomainEvent {
+                                         String processId, boolean nonRetryable,
+                                         @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+                                         String invocationId) implements DomainEvent {
+
+    public StepExecutionStatusChanged(String stepExecutionId, TaskStatus status, List<Variable> variables,
+                                     String processId, boolean nonRetryable) {
+        this(stepExecutionId, status, variables, processId, nonRetryable, null);
+    }
 
     public StepExecutionStatusChanged(String stepExecutionId, TaskStatus status, List<Variable> variables) {
         this(stepExecutionId, status, variables, null, false);

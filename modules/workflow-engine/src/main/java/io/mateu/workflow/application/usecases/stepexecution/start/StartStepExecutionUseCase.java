@@ -123,6 +123,7 @@ public class StartStepExecutionUseCase {
         if (StepType.HTTP_CALL.equals(step.type())) {
             taskId = io.mateu.workflow.domain.services.HttpRequestRenderer.TASK_ID;
         }
+        if (StepType.AGENT.equals(step.type())) taskId = "run-agent@1";
         if (StepType.LLM_CALL.equals(step.type())) {
             taskId = io.mateu.workflow.domain.services.LlmRequestRenderer.TASK_ID;
         }
@@ -142,7 +143,8 @@ public class StartStepExecutionUseCase {
                         .map(variable -> new Variable(variable.name(), variable.value()))
                         .toList(),
                 stepExecution.getDispatchCount(),
-                step.priority()
+                step.priority(),
+                stepExecution.getInvocationId()
         // StepExecution.topic(), not the step's own field: it knows the default topics of the built-in
         // tasks (http-calls, llm-calls), the same ones cancellation is sent to. With step.topic() an
         // HTTP_CALL without a topic went to `downstream`, where no http worker listens.

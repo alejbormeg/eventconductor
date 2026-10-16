@@ -64,8 +64,25 @@ public class UpdateStepExecutionUseCase {
     }
 
     private void doUpdate(UpdateStepExecutionCommand command) {
+        var stepExecutionId = command.stepId();
         var execution = repository.findById(command.stepId())
-                .orElseThrow(() -> new UnknownStepExecutionException(command.stepId()));
+                .orElseThrow(() -> new UnknownStepExecutionException(stepExecutionId));
+        if (execution.getInvocationId() != null
+                && !java.util.Objects.equals(execution.getInvocationId(), command.invocationId())) {
+            log.warn("Ignoring stale or uncorrelated agent update for {}", execution.id());
+            return;
+        }
+        if (command.status() == StepExecutionStatus.REVIEW_REQUIRED && execution.getInvocationId() == null) return;
+        if (execution.getInvocationId() != null && command.stateSequence() != null
+                && execution.getLastAgentStateSequence() != null
+                && command.stateSequence() <= execution.getLastAgentStateSequence()) return;
+        if (execution.getStatus() == StepExecutionStatus.REVIEW_REQUIRED && command.status() == StepExecutionStatus.RUNNING
+                && (!command.reviewResolved() || execution.getAgentHoldReason() != null)) return;
+        if (execution.getStatus() == StepExecutionStatus.REVIEW_REQUIRED && command.status() == StepExecutionStatus.CANCELLED
+                && "TIMEOUT".equals(execution.getAgentHoldReason())) {
+            command = new UpdateStepExecutionCommand(command.stepId(), java.util.List.of(), command.log(),
+                    StepExecutionStatus.TIMEOUT, true, command.attempt(), command.invocationId(), true, command.stateSequence());
+        }
         if (TERMINAL_STATUSES.contains(execution.getStatus())) {
             // Late report from a worker whose task already reached a final state
             // (timed out, cancelled, …) — applying it would resurrect the step.
@@ -99,16 +116,53 @@ public class UpdateStepExecutionUseCase {
             log.debug("Step execution {} awaits a reply; its worker's RUNNING report leaves it PENDING", execution.id());
             return;
         }
-        var process = processRepository.findById(execution.getProcessId())
-                .orElseThrow(() -> new UnknownProcessException(execution.getProcessId()));
+        var executionProcessId = execution.getProcessId();
+        var process = processRepository.findById(executionProcessId)
+                .orElseThrow(() -> new UnknownProcessException(executionProcessId));
+        // Only a successful agent result may cross the process-variable boundary.
+        var resultVariables = command.variables();
+        if (execution.getInvocationId() != null) {
+            if (command.status() == StepExecutionStatus.COMPLETED) {
+                var step = io.mateu.core.infra.JsonSerializer.pojoFromJson(execution.getStepJson(), io.mateu.workflow.domain.aggregates.Step.class);
+                if (resultVariables == null || resultVariables.size() != 1
+                        || !step.agent().outputVariable().equals(resultVariables.getFirst().name())) {
+                    throw new IllegalArgumentException("Agent completion must contain exactly its declared outputVariable");
+                }
+                // Validate JSON syntax again at the engine boundary. The runtime validates its schema.
+                new io.mateu.workflow.expression.JsonFunctions().parse(resultVariables.getFirst().value());
+            } else resultVariables = java.util.List.of();
+        }
+        boolean processChanged = !execution.isIteration();
         if (execution.isIteration()) {
             // A forEach iteration never writes the process: parallel iterations would race on the same
             // variables. What it reports stays on it, for its container's output to collect.
-            execution.recordOutput(command.variables());
+            execution.recordOutput(resultVariables);
         } else {
-            process.updateVariables(command.variables());
-            processRepository.save(process);
+            process.updateVariables(resultVariables);
         }
+
+        if (command.status() == StepExecutionStatus.REVIEW_REQUIRED) {
+            processChanged = true;
+            process = process.withStatus(io.mateu.workflow.domain.aggregates.ProcessStatus.PAUSED)
+                    .withPausedAt(io.mateu.workflow.time.EngineClock.now());
+        }
+        if (execution.getStatus() == StepExecutionStatus.REVIEW_REQUIRED
+                && command.status() != StepExecutionStatus.REVIEW_REQUIRED) {
+            processChanged = true;
+            var executionId = execution.id();
+            boolean anotherReview = repository.findByProcessId(execution.getProcessId()).stream()
+                    .anyMatch(other -> !other.id().equals(executionId) && other.getStatus() == StepExecutionStatus.REVIEW_REQUIRED);
+            if (!anotherReview) process = process.withStatus(command.status() == StepExecutionStatus.CANCELLED
+                    && "CANCELLED".equals(execution.getAgentHoldReason())
+                    ? io.mateu.workflow.domain.aggregates.ProcessStatus.CANCELLED
+                    : io.mateu.workflow.domain.aggregates.ProcessStatus.RUNNING).withPausedAt(null);
+            if (command.status() == StepExecutionStatus.RUNNING) {
+                // Reconciliation renewed the worker's execution budget. Human waiting consumes none.
+                execution = execution.withStartedAt(io.mateu.workflow.time.EngineClock.now());
+            }
+            execution = execution.withAgentHoldReason(null);
+        }
+        if (processChanged) processRepository.save(process);
 
         if (awaitsReply && StepExecutionStatus.COMPLETED.equals(command.status())) {
             // The request was answered (2xx, response mapped into the process above), but the step is
@@ -121,13 +175,20 @@ public class UpdateStepExecutionUseCase {
             return;
         }
 
+        if (execution.getInvocationId() != null && command.stateSequence() != null)
+            execution = execution.withLastAgentStateSequence(command.stateSequence());
+
         // A worker that says its failure is final (FailureMarkers) spares the step its retries.
-        var nonRetryable = StepExecutionStatus.ERROR.equals(command.status())
+        var nonRetryable = (StepExecutionStatus.ERROR.equals(command.status()) || StepExecutionStatus.TIMEOUT.equals(command.status()))
                 && (command.nonRetryable() || io.mateu.workflow.worker.FailureMarkers.isNonRetryable(command.log()));
         execution.updateStatus(command.status(), nonRetryable);
         // A failure with retries left is parked for its retry here, in the same transaction that
         // records it, so no reader ever sees it as a final ERROR in between (see AutoRetryService).
-        autoRetryService.parkForRetryIfAttemptsLeft(execution, nonRetryable);
+        boolean reviewHoldsRetry = (execution.getStatus() == StepExecutionStatus.ERROR
+                || execution.getStatus() == StepExecutionStatus.TIMEOUT)
+                && repository.findByProcessId(execution.getProcessId()).stream()
+                        .anyMatch(step -> step.getStatus() == StepExecutionStatus.REVIEW_REQUIRED);
+        if (!reviewHoldsRetry) autoRetryService.parkForRetryIfAttemptsLeft(execution, nonRetryable);
         repository.save(execution);
 
         // The variables just written may be the ones a sibling WAIT_FOR_MESSAGE correlates

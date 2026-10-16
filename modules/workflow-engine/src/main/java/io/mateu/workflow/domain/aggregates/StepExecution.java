@@ -114,6 +114,64 @@ public final class StepExecution extends AggregateRoot implements Identifiable {
      */
     private String injectedByStepExecutionId;
 
+    /** Stable across automatic retries; cleared only by an explicit process restart. */
+    private String invocationId;
+    /** Rendered once before dispatch; a retry cannot silently acquire different process input. */
+    private String agentRequest;
+    /** Why the agent was held: TIMEOUT, CANCELLED, END, or null for a worker-requested review. */
+    private String agentHoldReason;
+    /** Last accepted worker checkpoint; duplicate/old outbox delivery cannot reverse a review. */
+    private Long lastAgentStateSequence;
+    /** Kept so a failure deferred by another branch's review retains its retry policy. */
+    private boolean failureNonRetryable;
+
+    public StepExecution(String id, String processId, String workflowDefinitionId, String stepId,
+                         String stepJson, List<Variable> variables, StepExecutionStatus status,
+                         String workerId, long order, LocalDateTime startedAt, LocalDateTime finishedAt,
+                         int attemptCount, LocalDateTime deadlineAt, String awaitingMessageName,
+                         String awaitingCorrelationKey, Integer version, String injectedByStepExecutionId,
+                         String invocationId, String agentRequest, String agentHoldReason, Long lastAgentStateSequence) {
+        this(id, processId, workflowDefinitionId, stepId, stepJson, variables, status, workerId, order,
+                startedAt, finishedAt, attemptCount, deadlineAt, awaitingMessageName, awaitingCorrelationKey,
+                version, injectedByStepExecutionId, invocationId, agentRequest, agentHoldReason, lastAgentStateSequence, false);
+    }
+
+    public StepExecution(String id, String processId, String workflowDefinitionId, String stepId,
+                         String stepJson, List<Variable> variables, StepExecutionStatus status,
+                         String workerId, long order, LocalDateTime startedAt, LocalDateTime finishedAt,
+                         int attemptCount, LocalDateTime deadlineAt, String awaitingMessageName,
+                         String awaitingCorrelationKey, Integer version, String injectedByStepExecutionId,
+                         String invocationId, String agentRequest, String agentHoldReason) {
+        this(id, processId, workflowDefinitionId, stepId, stepJson, variables, status, workerId, order,
+                startedAt, finishedAt, attemptCount, deadlineAt, awaitingMessageName, awaitingCorrelationKey,
+                version, injectedByStepExecutionId, invocationId, agentRequest, agentHoldReason, null);
+    }
+
+    public StepExecution(String id, String processId, String workflowDefinitionId, String stepId,
+                         String stepJson, List<Variable> variables, StepExecutionStatus status,
+                         String workerId, long order, LocalDateTime startedAt, LocalDateTime finishedAt,
+                         int attemptCount, LocalDateTime deadlineAt, String awaitingMessageName,
+                         String awaitingCorrelationKey, Integer version, String injectedByStepExecutionId,
+                         String invocationId, String agentRequest) {
+        this(id, processId, workflowDefinitionId, stepId, stepJson, variables, status, workerId, order,
+                startedAt, finishedAt, attemptCount, deadlineAt, awaitingMessageName, awaitingCorrelationKey,
+                version, injectedByStepExecutionId, invocationId, agentRequest, null);
+    }
+
+    public void holdAgent(String reason) {
+        agentHoldReason = reason;
+        updateStatus(StepExecutionStatus.REVIEW_REQUIRED);
+    }
+
+    public StepExecution(String id, String processId, String workflowDefinitionId, String stepId,
+                         String stepJson, List<Variable> variables, StepExecutionStatus status,
+                         String workerId, long order, LocalDateTime startedAt, LocalDateTime finishedAt,
+                         int attemptCount, LocalDateTime deadlineAt, String awaitingMessageName,
+                         String awaitingCorrelationKey, Integer version, String injectedByStepExecutionId) {
+        this(id, processId, workflowDefinitionId, stepId, stepJson, variables, status, workerId, order,
+                startedAt, finishedAt, attemptCount, deadlineAt, awaitingMessageName, awaitingCorrelationKey,
+                version, injectedByStepExecutionId, null, null);
+    }
     /**
      * Which dispatch of this step execution is the current one: bumped every time the step starts
      * and every time it goes back to CREATED to run again (a restart, a manual or automatic retry).
@@ -180,6 +238,33 @@ public final class StepExecution extends AggregateRoot implements Identifiable {
     public static final String LOOP_EXHAUSTED = "EXHAUSTED";
     public static final String LOOP_DISCARDED = "DISCARDED";
 
+
+    /** Source compatibility for the previous constructor shape. */
+    public StepExecution(String id, String processId, String workflowDefinitionId, String stepId,
+            String stepJson, List<Variable> variables, StepExecutionStatus status, String workerId,
+            long order, LocalDateTime startedAt, LocalDateTime finishedAt, int attemptCount,
+            LocalDateTime deadlineAt, String awaitingMessageName, String awaitingCorrelationKey, Integer version,
+            String injectedByStepExecutionId, int dispatchCount, int iteration, boolean superseded,
+            String loopDecision, String parentExecutionId, Integer itemIndex, String scopeJson,
+            String outputJson) {
+        this(id, processId, workflowDefinitionId, stepId, stepJson, variables, status, workerId,
+                order, startedAt, finishedAt, attemptCount, deadlineAt, awaitingMessageName, awaitingCorrelationKey, version,
+                injectedByStepExecutionId, null, null, null, null, false, dispatchCount, iteration,
+                superseded, loopDecision, parentExecutionId, itemIndex, scopeJson, outputJson);
+    }
+
+    /** Source compatibility for the previous constructor shape. */
+    public StepExecution(String id, String processId, String workflowDefinitionId, String stepId,
+            String stepJson, List<Variable> variables, StepExecutionStatus status, String workerId,
+            long order, LocalDateTime startedAt, LocalDateTime finishedAt, int attemptCount,
+            LocalDateTime deadlineAt, String awaitingMessageName, String awaitingCorrelationKey, Integer version,
+            String injectedByStepExecutionId, String invocationId, String agentRequest, String agentHoldReason,
+            Long lastAgentStateSequence, boolean failureNonRetryable) {
+        this(id, processId, workflowDefinitionId, stepId, stepJson, variables, status, workerId,
+                order, startedAt, finishedAt, attemptCount, deadlineAt, awaitingMessageName, awaitingCorrelationKey, version,
+                injectedByStepExecutionId, invocationId, agentRequest, agentHoldReason, lastAgentStateSequence, failureNonRetryable, 0, 0,
+                false, null, null, null, null, null);
+    }
 
     public static StepExecution create(Step step, String processId, int position) {
         return create(step, processId, position, null);
@@ -368,6 +453,7 @@ public final class StepExecution extends AggregateRoot implements Identifiable {
     public String topic() {
         try {
             var step = pojoFromJson(stepJson, Step.class);
+            if (StepType.AGENT.equals(step.type())) return io.mateu.workflow.domain.services.AgentRequestRenderer.TOPIC;
             if (StepType.HTTP_CALL.equals(step.type()) && (step.topic() == null || step.topic().isBlank())) {
                 // HTTP egress on a topic of its own, so it can be scaled and network-policed apart.
                 return io.mateu.workflow.domain.services.HttpRequestRenderer.DEFAULT_TOPIC;
@@ -753,6 +839,26 @@ public final class StepExecution extends AggregateRoot implements Identifiable {
             }
             send(new TaskLogEmitted(id, MessageType.Info,
                     step.type() + " step " + step.name() + " on key '" + lockKey + "'."));
+        } else if (StepType.AGENT.equals(step.type())) {
+            try {
+                if (invocationId == null) invocationId = UUID.randomUUID().toString();
+                if (agentRequest == null) {
+                    var deadline = deadlineAt == null ? null : deadlineAt.atZone(java.time.ZoneId.systemDefault())
+                            .toInstant().toString();
+                    var payload = io.mateu.workflow.domain.services.AgentRequestRenderer.render(step, process, id, deadline);
+                    var digest = java.security.MessageDigest.getInstance("SHA-256").digest(
+                            toJson(payload).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                    payload.put("requestDigest", java.util.HexFormat.of().formatHex(digest));
+                    agentRequest = toJson(payload);
+                }
+                this.variables = List.of(new Variable("__agent", agentRequest));
+                send(new TaskExecutionRequested(id, processId, workflowDefinitionId, stepId,
+                        "run-agent@1", List.of(new io.mateu.workflow.dtos.Variable("__agent", agentRequest)), dispatchCount, step.priority(), invocationId));
+            } catch (Exception e) {
+                send(new TaskLogEmitted(id, MessageType.Error, "Agent request could not be rendered: " + e.getMessage()));
+                updateStatus(StepExecutionStatus.ERROR, true);
+                return this;
+            }
         } else if (StepType.HTTP_CALL.equals(step.type())) {
             // Rendered here, from the process as it stands, then dispatched to the built-in http-call
             // worker task like any worker step (timeouts, retries, compensation, cancellation).
@@ -896,12 +1002,13 @@ public final class StepExecution extends AggregateRoot implements Identifiable {
             this.loopDecision = null;
         }
         this.status = status;
+        this.failureNonRetryable = nonRetryable;
         if (status.isTerminal()) {
             this.finishedAt = EngineClock.now();
         } else {
             this.finishedAt = null;
         }
-        send(new StepExecutionStatusChanged(id, TaskStatus.valueOf(status.name()), List.of(), processId, nonRetryable));
+        send(new StepExecutionStatusChanged(id, TaskStatus.valueOf(status.name()), List.of(), processId, nonRetryable, invocationId));
         // A WAIT_FOR_MESSAGE step that reaches a terminal status is no longer waiting: drop its
         // routing subscription (keyed by this step, so the delete is idempotent).
         if (status.isTerminal() && awaitingMessageName != null) {
@@ -935,6 +1042,14 @@ public final class StepExecution extends AggregateRoot implements Identifiable {
      * from one of its steps rather than from the start.
      */
     public void resetForRerun(String why) {
+        if (status == StepExecutionStatus.REVIEW_REQUIRED) {
+            throw new IllegalStateException("Reconcile the agent invocation before restarting");
+        }
+        this.invocationId = null;
+        this.agentRequest = null;
+        this.agentHoldReason = null;
+        this.lastAgentStateSequence = null;
+        this.failureNonRetryable = false;
         this.dispatchCount++;
         this.loopDecision = null;
         if (parentExecutionId == null) {

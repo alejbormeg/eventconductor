@@ -523,6 +523,13 @@ public class SpecValidator {
                 checkJexl(replyExpr, "step '" + id + "' replyExpression", violations);
             }
             checkTemplate(step.get("replyTemplate"), "step '" + id + "' replyTemplate", violations);
+            if ("AGENT".equals(type)) {
+                JsonNode agent = step.get("agent");
+                if (agent != null) {
+                    checkTemplate(agent.get("taskPrompt"), "step '" + id + "' agent.taskPrompt", violations);
+                    checkTemplate(agent.get("input"), "step '" + id + "' agent.input", violations);
+                }
+            }
             if ("HTTP_CALL".equals(type)) {
                 JsonNode http = step.get("http");
                 @SuppressWarnings("unchecked")

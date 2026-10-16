@@ -538,6 +538,28 @@ class SpecValidatorTest {
     }
 
     @Test
+    void agentStepsValidateExplicitConfigurationAndTemplates() throws Exception {
+        var good = json("""
+                {"name":"Synthetic assessment","steps":[
+                  {"id":"start","name":"Start","type":"START"},
+                  {"id":"assess","name":"Assess","type":"AGENT","preconditionStepId":"start",
+                   "agent":{"ref":"synthetic","outputVariable":"assessment","mcp":[],"input":{"id":"${caseId}"}}}
+                ]}
+                """);
+        assertThat(validator.validate(SpecValidator.Kind.WORKFLOW, good)).isEmpty();
+        var agent = (com.fasterxml.jackson.databind.node.ObjectNode) good.path("steps").get(1).path("agent");
+        agent.put("taskPrompt", "Assess ${caseId +}");
+        assertThat(validator.validate(SpecValidator.Kind.WORKFLOW, good)).anyMatch(problem -> problem.contains("agent.taskPrompt"));
+        agent.remove("taskPrompt");
+        var step = (com.fasterxml.jackson.databind.node.ObjectNode) good.path("steps").get(1);
+        step.put("retries", 1);
+        assertThat(validator.validate(SpecValidator.Kind.WORKFLOW, good)).anyMatch(problem -> problem.contains("retries"));
+        step.put("retries", 0);
+        agent.put("model", "forbidden-override");
+        assertThat(validator.validate(SpecValidator.Kind.WORKFLOW, good)).anyMatch(problem -> problem.contains("model"));
+    }
+
+    @Test
     void cronFilesValidateInBothForms() throws Exception {
         assertThat(validate(SpecValidator.Kind.CRON, "/valid/workflows/cron.yaml")).isEmpty();
         var keyed = new YAMLMapper().readTree("""

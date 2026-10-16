@@ -226,7 +226,7 @@ public class MigrationPlanner {
             case ERROR -> MigrationRules.State.FAILED;
             case TIMEOUT -> ProcessOperationRules.blocksTheFlow(execution) ? MigrationRules.State.FAILED
                     : MigrationRules.State.SKIPPED;
-            case PENDING, RUNNING, AWAITING_RETRY, WAITING_ON_LOCK -> MigrationRules.State.ACTIVE;
+            case PENDING, RUNNING, REVIEW_REQUIRED, AWAITING_RETRY, WAITING_ON_LOCK -> MigrationRules.State.ACTIVE;
         };
         var type = step == null || step.type() == null ? null : step.type().name();
         var atWorker = status != null && status.isInFlightAtAWorker() && !execution.isContainer()

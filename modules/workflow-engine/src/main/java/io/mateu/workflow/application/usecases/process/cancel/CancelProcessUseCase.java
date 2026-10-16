@@ -104,6 +104,19 @@ public class CancelProcessUseCase {
             return new Cancellation(process, cancelledSteps, true);
         }
 
+        var activeAgents = stepExecutionRepository.findByProcess(process).stream()
+                .filter(step -> step.getInvocationId() != null && (step.getStatus().isInFlightAtAWorker()
+                        || step.getStatus() == StepExecutionStatus.REVIEW_REQUIRED)).toList();
+        if (!activeAgents.isEmpty()) {
+            // Cancellation is a request until all dispatched effects have known outcomes.
+            processRepository.save(process.withStatus(ProcessStatus.PAUSED).withPausedAt(EngineClock.now()));
+            for (var agent : activeAgents) {
+                if (agent.getStatus() != StepExecutionStatus.REVIEW_REQUIRED) agent.holdAgent("CANCELLED");
+                stepExecutionRepository.save(agent);
+            }
+            return null;
+        }
+
         // Mark the process CANCELLED first: the step-status events emitted below re-enter
         // the orchestration loop, which must see the process as cancelled and not
         // dispatch any still-CREATED step in the middle of the cancellation.
@@ -122,7 +135,7 @@ public class CancelProcessUseCase {
             if (!StepExecutionStatus.ERROR.equals(stepExecution.getStatus()) && !StepExecutionStatus.COMPLETED.equals(stepExecution.getStatus())
                     && !StepExecutionStatus.CANCELLED.equals(stepExecution.getStatus())) {
                 if (stepExecution.getStatus().isInFlightAtAWorker()) {
-                    downstreamEventPublisher.publish(new TaskCancellationRequested(stepExecution.getId()),
+                    downstreamEventPublisher.publish(new TaskCancellationRequested(stepExecution.getId(), stepExecution.getInvocationId()),
                             stepExecution.topic());
                 }
                 stepExecution.updateStatus(StepExecutionStatus.CANCELLED);

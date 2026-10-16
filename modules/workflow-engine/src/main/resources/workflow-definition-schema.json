@@ -821,7 +821,8 @@
             "PUBLISH_EVENT",
             "HTTP_CALL",
             "LLM_CALL",
-            "CONTINUE_AS_NEW"
+            "CONTINUE_AS_NEW",
+            "AGENT"
           ]
         },
         "name": {
@@ -1825,6 +1826,70 @@
               ]
             }
           }
+        },
+        "agent": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": false,
+          "required": [
+            "ref",
+            "outputVariable"
+          ],
+          "properties": {
+            "ref": {
+              "type": "string",
+              "minLength": 1
+            },
+            "taskPrompt": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "input": {
+              "description": "Explicit structured input template. Absent defaults to {}."
+            },
+            "outputVariable": {
+              "type": "string",
+              "minLength": 1
+            },
+            "mcp": {
+              "type": [
+                "array",
+                "null"
+              ],
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "rag": {
+              "type": [
+                "array",
+                "null"
+              ],
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "peers": {
+              "type": [
+                "array",
+                "null"
+              ],
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          },
+          "description": "AGENT: published catalogue agent; absent capability lists inherit and [] disables. Model and credentials belong to the catalogue."
         }
       },
       "allOf": [
@@ -2102,6 +2167,32 @@
             "required": [
               "compensationStepId"
             ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "AGENT"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "required": [
+              "agent"
+            ],
+            "properties": {
+              "agent": {
+                "type": "object"
+              },
+              "retries": {
+                "const": 0,
+                "description": "AGENT failures are final; durable recovery/redelivery preserves the invocation. Explicit process restart creates a new invocation."
+              }
+            }
           }
         }
       ]

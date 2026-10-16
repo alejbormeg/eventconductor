@@ -34,8 +34,8 @@ public class TaskStatusChangedEventHandler implements DomainEventHandler<TaskSta
             return;
         }
         updateStepExecutionUseCase.handle(new UpdateStepExecutionCommand(e.taskExecutionId(),
-                e.variables().stream()
+                (e.variables() == null ? java.util.List.<io.mateu.workflow.dtos.Variable>of() : e.variables()).stream()
                         .map(variable -> new Variable(variable.name(), variable.value())).toList(),
-                "", StepExecutionStatus.valueOf(e.status().name()), e.nonRetryable(), e.attempt()));
+                "", StepExecutionStatus.valueOf(e.status().name()), e.nonRetryable(), e.attempt(), e.invocationId(), e.reviewResolved(), e.stateSequence()));
     }
 }

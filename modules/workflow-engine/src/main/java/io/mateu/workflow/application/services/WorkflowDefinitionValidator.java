@@ -32,6 +32,9 @@ public class WorkflowDefinitionValidator {
     private final ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
     private Schema schema;
 
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private io.mateu.workflow.application.out.WorkflowAgentCatalogue agentCatalogue;
+
     @PostConstruct
     void init() throws IOException {
         schema();
@@ -120,6 +123,14 @@ public class WorkflowDefinitionValidator {
     public void validate(WorkflowDefinition definition) {
         definition.checkInvariants();
         requireKeysFor(definition, encryption);
+        if (definition.steps() != null) definition.steps().stream()
+                .filter(step -> step.type() == io.mateu.workflow.domain.aggregates.StepType.AGENT)
+                .forEach(step -> {
+                    if (agentCatalogue == null) throw new WorkflowDefinitionValidationException("Workflow agent catalogue is not configured");
+                    try { agentCatalogue.validate(step.agent()); }
+                    catch (RuntimeException failure) { throw new WorkflowDefinitionValidationException(
+                            "Invalid AGENT step '" + step.id() + "': " + failure.getMessage(), failure); }
+                });
         // Non-fatal guidance toward the FORK/JOIN gateway model (compensation-aware).
         definition.topologyWarnings().forEach(w ->
                 log.warn("Workflow definition '{}': {}", definition.name(), w));

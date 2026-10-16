@@ -106,6 +106,86 @@ public class StepExecutionEntity {
      */
     String injectedByStepExecutionId;
 
+    String invocationId;
+    @Column(columnDefinition = "TEXT")
+    String agentRequest;
+    String agentHoldReason;
+    Long lastAgentStateSequence;
+    @Column(nullable = false)
+    boolean failureNonRetryable;
+
+    /** Source compatibility for the previous constructor shape. */
+    public StepExecutionEntity(String id, String processId, String workflowDefinitionId, String stepId,
+            String stepJson, String stepType, String  variables, String status,
+            String workerId, long order, LocalDateTime startedAt, LocalDateTime finishedAt,
+            int attemptCount, LocalDateTime deadlineAt, String awaitingMessageName, String awaitingCorrelationKey,
+            String lockName, String lockKey, Integer version, String injectedByStepExecutionId,
+            Integer dispatchCount, Integer iteration, Boolean superseded, String loopDecision,
+            String parentExecutionId, Integer itemIndex, String scopeJson, String outputJson) {
+        this(id, processId, workflowDefinitionId, stepId, stepJson, stepType, variables, status,
+                workerId, order, startedAt, finishedAt, attemptCount, deadlineAt, awaitingMessageName, awaitingCorrelationKey,
+                lockName, lockKey, version, injectedByStepExecutionId, null, null, null, null,
+                false, dispatchCount, iteration, superseded, loopDecision, parentExecutionId, itemIndex, scopeJson,
+                outputJson);
+    }
+
+    /** Source compatibility for the previous constructor shape. */
+    public StepExecutionEntity(String id, String processId, String workflowDefinitionId, String stepId,
+            String stepJson, String stepType, String  variables, String status,
+            String workerId, long order, LocalDateTime startedAt, LocalDateTime finishedAt,
+            int attemptCount, LocalDateTime deadlineAt, String awaitingMessageName, String awaitingCorrelationKey,
+            String lockName, String lockKey, Integer version, String injectedByStepExecutionId,
+            String invocationId, String agentRequest, String agentHoldReason, Long lastAgentStateSequence,
+            boolean failureNonRetryable) {
+        this(id, processId, workflowDefinitionId, stepId, stepJson, stepType, variables, status,
+                workerId, order, startedAt, finishedAt, attemptCount, deadlineAt, awaitingMessageName, awaitingCorrelationKey,
+                lockName, lockKey, version, injectedByStepExecutionId, invocationId, agentRequest, agentHoldReason, lastAgentStateSequence,
+                failureNonRetryable, null, null, null, null, null, null, null,
+                null);
+    }
+
+    public StepExecutionEntity(String id, String processId, String workflowDefinitionId, String stepId,
+            String stepJson, String stepType, String variables, String status, String workerId, long order,
+            LocalDateTime startedAt, LocalDateTime finishedAt, int attemptCount, LocalDateTime deadlineAt,
+            String awaitingMessageName, String awaitingCorrelationKey, String lockName, String lockKey,
+            Integer version, String injectedByStepExecutionId, String invocationId, String agentRequest,
+            String agentHoldReason, Long lastAgentStateSequence) {
+        this(id, processId, workflowDefinitionId, stepId, stepJson, stepType, variables, status, workerId,
+                order, startedAt, finishedAt, attemptCount, deadlineAt, awaitingMessageName,
+                awaitingCorrelationKey, lockName, lockKey, version, injectedByStepExecutionId, invocationId,
+                agentRequest, agentHoldReason, lastAgentStateSequence, false);
+    }
+
+    public StepExecutionEntity(String id, String processId, String workflowDefinitionId, String stepId,
+            String stepJson, String stepType, String variables, String status, String workerId, long order,
+            LocalDateTime startedAt, LocalDateTime finishedAt, int attemptCount, LocalDateTime deadlineAt,
+            String awaitingMessageName, String awaitingCorrelationKey, String lockName, String lockKey,
+            Integer version, String injectedByStepExecutionId, String invocationId, String agentRequest, String agentHoldReason) {
+        this(id, processId, workflowDefinitionId, stepId, stepJson, stepType, variables, status, workerId,
+                order, startedAt, finishedAt, attemptCount, deadlineAt, awaitingMessageName,
+                awaitingCorrelationKey, lockName, lockKey, version, injectedByStepExecutionId, invocationId, agentRequest, agentHoldReason, null);
+    }
+
+    public StepExecutionEntity(String id, String processId, String workflowDefinitionId, String stepId,
+            String stepJson, String stepType, String variables, String status, String workerId, long order,
+            LocalDateTime startedAt, LocalDateTime finishedAt, int attemptCount, LocalDateTime deadlineAt,
+            String awaitingMessageName, String awaitingCorrelationKey, String lockName, String lockKey,
+            Integer version, String injectedByStepExecutionId, String invocationId, String agentRequest) {
+        this(id, processId, workflowDefinitionId, stepId, stepJson, stepType, variables, status, workerId,
+                order, startedAt, finishedAt, attemptCount, deadlineAt, awaitingMessageName,
+                awaitingCorrelationKey, lockName, lockKey, version, injectedByStepExecutionId, invocationId, agentRequest, null);
+    }
+
+    public StepExecutionEntity(String id, String processId, String workflowDefinitionId, String stepId,
+            String stepJson, String stepType, String variables, String status, String workerId, long order,
+            LocalDateTime startedAt, LocalDateTime finishedAt, int attemptCount, LocalDateTime deadlineAt,
+            String awaitingMessageName, String awaitingCorrelationKey, String lockName, String lockKey,
+            Integer version, String injectedByStepExecutionId) {
+        this(id, processId, workflowDefinitionId, stepId, stepJson, stepType, variables, status, workerId,
+                order, startedAt, finishedAt, attemptCount, deadlineAt, awaitingMessageName,
+                awaitingCorrelationKey, lockName, lockKey, version, injectedByStepExecutionId, null, null);
+    }
+
     /**
      * Which dispatch of the step is the current one (see {@code StepExecution.dispatchCount}). Boxed:
      * rows written before the column existed read null, which is the same as zero.

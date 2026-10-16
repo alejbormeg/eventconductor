@@ -1215,6 +1215,17 @@ public record WorkflowDefinition(
                 }
                 requireValidTemplate(step.replyTemplate(), "REPLY step '" + step.id() + "' replyTemplate");
             }
+            if (StepType.AGENT.equals(step.type())) {
+                if (step.retries() != 0) throw new IllegalStateException("AGENT step '" + step.id()
+                        + "' must use retries: 0; restart the process explicitly to create a new invocation");
+                var call = step.agent();
+                if (call == null || call.ref() == null || call.ref().isBlank()
+                        || call.outputVariable() == null || call.outputVariable().isBlank()) {
+                    throw new IllegalStateException("AGENT step '" + step.id() + "' requires agent.ref and agent.outputVariable");
+                }
+                requireValidTemplate(call.taskPrompt(), "AGENT taskPrompt");
+                requireValidTemplate(call.input(), "AGENT input");
+            }
             if (StepType.HTTP_CALL.equals(step.type())) {
                 var problems = io.mateu.workflow.domain.services.HttpRequestRenderer.problems(step);
                 if (!problems.isEmpty()) {
@@ -1350,7 +1361,7 @@ public record WorkflowDefinition(
     /** The steps that wait for something and so can miss a deadline. */
     private static boolean canTimeOut(StepType type) {
         return type != null && switch (type) {
-            case ACTION, USER_TASK, RULE, WAIT_FOR_MESSAGE, PROCESS, HTTP_CALL, LLM_CALL -> true;
+            case ACTION, USER_TASK, RULE, WAIT_FOR_MESSAGE, PROCESS, HTTP_CALL, LLM_CALL, AGENT -> true;
             default -> false;
         };
     }

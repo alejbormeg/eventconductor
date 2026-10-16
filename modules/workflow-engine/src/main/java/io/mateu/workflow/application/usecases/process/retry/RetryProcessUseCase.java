@@ -81,6 +81,7 @@ public class RetryProcessUseCase {
         // re-runs the failed iterations itself; a loop's earlier passes are history.
         var stepExecutions = io.mateu.workflow.domain.services.StepExecutions.current(
                 stepExecutionRepository.findByProcess(process));
+        if (stepExecutionRepository.findByProcess(process).stream().anyMatch(step -> step.getStatus() == StepExecutionStatus.REVIEW_REQUIRED)) return;
         boolean changed = false;
         for (var stepExecution : stepExecutions) {
             if (revivable.contains(stepExecution.getStatus())) {

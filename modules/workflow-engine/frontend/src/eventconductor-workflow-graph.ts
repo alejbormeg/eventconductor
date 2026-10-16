@@ -51,7 +51,7 @@ type StepType =
     | "START" | "ACTION" | "USER_TASK" | "RULE" | "TIMER"
     | "WAIT_FOR_MESSAGE" | "SEND_MESSAGE" | "FORK" | "JOIN" | "CHOICE" | "PROCESS" | "END" | "DYNAMIC"
     | "LOCK" | "UNLOCK" | "REPLY" | "PUBLISH_EVENT" | "HTTP_CALL" | "LLM_CALL"
-    | "CONTINUE_AS_NEW";
+    | "CONTINUE_AS_NEW" | "AGENT";
 /** Whether a workflow is open for business. DRAFT is an older value that meant nothing. */
 type WorkflowStatus = "ACTIVE" | "DISABLED" | "ARCHIVED" | "DRAFT";
 
@@ -90,6 +90,7 @@ interface WorkflowStep {
     event?: { destination?: string; type?: string; key?: string };
     /** HTTP_CALL only: the request to make. */
     http?: { connection?: string; url?: string; method?: string; path?: string };
+    agent?: {ref: string; taskPrompt?: string; input?: unknown; mcp?: string[]; rag?: string[]; peers?: string[]; outputVariable: string};
     /** LLM_CALL only: what to ask the model. */
     llm?: { connection?: string; model?: string; responseSchema?: unknown };
     /** Worker steps only: 0–100, higher first; absent means the default, 50. */
@@ -315,7 +316,7 @@ interface WorkflowDefinition {
     businessKeyPolicy?: "unique" | "allowAfterFinished" | "allowAfterFailed" | "terminateRunning";
 }
 
-type StepState = "PENDING" | "RUNNING" | "COMPLETED" | "ERROR" | "TIMEOUT" | "CANCELLED" | "COMPENSATED" | "WAITING_ON_LOCK";
+type StepState = "PENDING" | "RUNNING" | "COMPLETED" | "ERROR" | "TIMEOUT" | "CANCELLED" | "COMPENSATED" | "WAITING_ON_LOCK" | "REVIEW_REQUIRED";
 /**
  * Per-step monitoring overlay entry (read-only views): a live process count and/or a state, plus
  * the diagnostic detail the hover shows so an operator can answer "why is it here?" without opening
@@ -379,7 +380,7 @@ const PAD = 60;
 const STEP_TYPES: StepType[] = [
     "START", "ACTION", "USER_TASK", "RULE", "TIMER",
     "WAIT_FOR_MESSAGE", "SEND_MESSAGE", "FORK", "JOIN", "CHOICE", "PROCESS", "END", "DYNAMIC",
-    "LOCK", "UNLOCK", "REPLY", "PUBLISH_EVENT", "HTTP_CALL", "LLM_CALL", "CONTINUE_AS_NEW",
+    "LOCK", "UNLOCK", "REPLY", "PUBLISH_EVENT", "HTTP_CALL", "LLM_CALL", "CONTINUE_AS_NEW", "AGENT",
 ];
 
 /**
@@ -437,6 +438,7 @@ const NODE_STYLE: Record<StepType, NodeStyle> = {
     // Engine-side integrations: a domain event broadcast out (sky), an HTTP call out (blue).
     PUBLISH_EVENT:    {fill: "#f0f9ff", stroke: "#0284c7", symbol: "broadcast"},
     HTTP_CALL:        {fill: "#eff6ff", stroke: "#2563eb", symbol: "globe"},
+    AGENT:            {fill: "#f5f3ff", stroke: "#7c3aed", symbol: "robot"},
     // A language model asked a question: violet, with a sparkle — a colour no other step uses.
     LLM_CALL:         {fill: "#f5f3ff", stroke: "#7c3aed", symbol: "sparkle"},
     // Ends this run and starts the next one of the chain: rose, with a restart arrow, drawn with the
@@ -504,7 +506,7 @@ function isGatewayType(t: StepType): boolean { return t === "FORK" || t === "JOI
 function isTaskStepType(t: StepType): boolean {
     return t === "ACTION" || t === "USER_TASK" || t === "RULE"
         || t === "WAIT_FOR_MESSAGE" || t === "PROCESS" || t === "DYNAMIC" || t === "HTTP_CALL"
-        || t === "LLM_CALL";
+        || t === "LLM_CALL" || t === "AGENT";
 }
 /** A timeout in ms as a short human string: 30000 → "30s", 90000 → "1m 30s", 120000 → "2m". */
 function formatTimeout(ms: number): string {
@@ -599,6 +601,7 @@ function badgeOf(step: WorkflowStep): string {
             + (step.awaitReply ? " " + describeAwaitReply(step.awaitReply) : "");
         case "LLM_CALL": return "✦ " + (step.llm?.connection || "llm") + (step.llm?.model ? " · " + step.llm.model : "");
         case "CONTINUE_AS_NEW": return "↻ " + (step.continueAsNew?.version === "latest" ? "latest" : "same version");
+        case "AGENT": return step.agent?.ref || "Select agent";
         case "TIMER": return "⏱ " + (step.until ? describeMoment(step.until)
             : step.untilVariable ? "until " + step.untilVariable
             : step.duration ? String(step.duration) : "TIMER");
@@ -1131,6 +1134,28 @@ export class MateuWorkflowElk extends LitElement {
 
     /** When true, all editing interactions are disabled. */
     @property({type: Boolean}) readOnly = false;
+    @property() agentCatalogueUrl = "/api/workflow-agents";
+    @state() private agentCatalogue: {id: string; name?: string; mcp?: string[]; rag?: string[]; peers?: string[]}[] = [];
+    @state() private agentCatalogueError = "";
+
+    private async loadAgentCatalogue() {
+        try {
+            const endpoint = new URL(this.agentCatalogueUrl, window.location.href);
+            // Mateu's Axios interceptor does not cover fetch. Reuse its established token key,
+            // exclusively for this origin: an embedded component must never forward it elsewhere.
+            if (endpoint.origin !== window.location.origin || !["http:", "https:"].includes(endpoint.protocol))
+                throw new Error("The agent catalogue must use the editor's own origin");
+            const headers: Record<string, string> = {};
+            const token = window.localStorage.getItem("__mateu_auth_token");
+            if (token) headers.Authorization = "Bearer " + token;
+            const response = await fetch(endpoint.href, {credentials: "same-origin", headers});
+            if (!response.ok) throw new Error("Catalogue unavailable (" + response.status + ")");
+            const entries = await response.json();
+            if (!Array.isArray(entries)) throw new Error("Invalid catalogue response");
+            this.agentCatalogue = entries;
+            this.agentCatalogueError = "";
+        } catch (error) { this.agentCatalogueError = String(error); }
+    }
 
     /**
      * Drops the expand button. Inside an IDE editor pane — the VS Code custom editor, the IntelliJ
@@ -1395,6 +1420,7 @@ export class MateuWorkflowElk extends LitElement {
 
     connectedCallback() {
         super.connectedCallback();
+        if (!this.readOnly) void this.loadAgentCatalogue();
         this.syncThemeFromHost();
         this.themeObs = new MutationObserver(() => this.syncThemeFromHost());
         this.themeObs.observe(document.documentElement, {attributes: true, attributeFilter: ["theme", "class"]});
@@ -1677,6 +1703,7 @@ export class MateuWorkflowElk extends LitElement {
         const id = newId();
         const pretty = type.charAt(0) + type.slice(1).toLowerCase().replace(/_/g, " ");
         const step: WorkflowStep = {id, type, name: "New " + pretty};
+        if (type === "AGENT") { step.agent = {ref: "", input: {}, outputVariable: "assessment"}; step.timeout = 300000; step.retries = 0; }
         this.wf = {...this.wf, steps: [...(this.wf.steps ?? []), step]};
         const {w, h} = sizeOf(type);
         this.positions = {
@@ -1702,6 +1729,7 @@ export class MateuWorkflowElk extends LitElement {
         const id = newId();
         const pretty = type.charAt(0) + type.slice(1).toLowerCase().replace(/_/g, " ");
         const step: WorkflowStep = {id, type, name: "New " + pretty};
+        if (type === "AGENT") { step.agent = {ref: "", input: {}, outputVariable: "assessment"}; step.timeout = 300000; step.retries = 0; }
         // START never has an incoming link; everything else is wired as a successor of the target.
         if (type !== "START") step.preconditions = [{stepId: fromId}];
         this.wf = {...this.wf, steps: [...(this.wf.steps ?? []), step]};
@@ -3843,7 +3871,8 @@ export class MateuWorkflowElk extends LitElement {
                                .value="${String(step.timeout ?? 0)}"
                                @change="${ro ? nothing : (e: Event) => this.updateStep(step.id, {timeout: Number((e.target as HTMLInputElement).value)})}"/>`)}
                     ${field("Retries", html`
-                        <input class="inp" type="number" min="0" ?readonly="${ro}"
+                        <input class="inp" type="number" min="0" ?readonly="${ro || step.type === "AGENT"}"
+                               title="${step.type === "AGENT" ? "Agent failures are final. Restart the process explicitly for a new invocation." : ""}"
                                .value="${String(step.retries ?? 0)}"
                                @change="${ro ? nothing : (e: Event) => this.updateStep(step.id, {retries: Number((e.target as HTMLInputElement).value)})}"/>`)}
                     <!-- Compensation is wired on the graph, not here: alt+drag from a compensable
@@ -3869,6 +3898,40 @@ export class MateuWorkflowElk extends LitElement {
                         <input class="inp" readonly title="Edit the http block in the YAML"
                                .value="${(step.http?.method || "GET") + " " + (step.http?.connection
                                    ? step.http.connection + (step.http.path || "") : (step.http?.url || ""))}"/>`) : ""}
+                    ${step.type === "AGENT" ? html`
+                        ${field("Published agent", html`<input class="inp" list="ec-agent-options" ?readonly="${ro}"
+                            .value="${step.agent?.ref ?? ""}" @change="${ro ? nothing : (e: Event) => this.updateStep(step.id,
+                                {agent: {...(step.agent ?? {outputVariable: "assessment"}), ref: (e.target as HTMLInputElement).value}})}"/>
+                            <datalist id="ec-agent-options">${this.agentCatalogue.map(a => html`<option value="${a.id}">${a.name || a.id}</option>`)}</datalist>
+                            ${!ro && this.agentCatalogueError ? html`<small role="status">${this.agentCatalogueError}. Catalogue validation runs on import.</small>
+                                <button type="button" @click="${() => this.loadAgentCatalogue()}">Reload catalogue</button>` : nothing}`)}
+                        ${field("Task prompt", html`<textarea class="inp" rows="4" ?readonly="${ro}"
+                            .value="${step.agent?.taskPrompt ?? ""}" @change="${ro ? nothing : (e: Event) => this.updateStep(step.id,
+                                {agent: {...(step.agent ?? {ref: "", outputVariable: "assessment"}), taskPrompt: (e.target as HTMLTextAreaElement).value}})}"></textarea>`)}
+                        ${field("Input (JSON template)", html`<textarea class="inp" rows="5" ?readonly="${ro}"
+                            .value="${JSON.stringify(step.agent?.input ?? {}, null, 2)}" @change="${ro ? nothing : (e: Event) => {
+                                const target = e.target as HTMLTextAreaElement;
+                                try { const input = JSON.parse(target.value); target.setCustomValidity(""); this.updateStep(step.id,
+                                    {agent: {...(step.agent ?? {ref: "", outputVariable: "assessment"}), input}}); }
+                                catch { target.setCustomValidity("Enter valid JSON"); target.reportValidity(); }
+                            }}"></textarea>`)}
+                        ${(["mcp", "rag", "peers"] as const).map(capability => field(capability.toUpperCase() + " (JSON array; blank inherits)", html`
+                            <small>Allowed: ${(this.agentCatalogue.find(a => a.id === step.agent?.ref)?.[capability] ?? []).join(", ") || "none"}</small>
+                            <input class="inp" ?readonly="${ro}" .value="${step.agent?.[capability] == null ? "" : JSON.stringify(step.agent[capability])}"
+                                @change="${ro ? nothing : (e: Event) => {
+                                    const target = e.target as HTMLInputElement;
+                                    try { const selection = target.value.trim() ? JSON.parse(target.value) : undefined;
+                                        if (selection != null && (!Array.isArray(selection) || selection.some(v => typeof v !== "string"))) throw new Error();
+                                        const allowed = this.agentCatalogue.find(a => a.id === step.agent?.ref)?.[capability];
+                                        if (allowed && selection?.some(v => !allowed.includes(v))) throw new Error();
+                                        target.setCustomValidity(""); this.updateStep(step.id,
+                                            {agent: {...(step.agent ?? {ref: "", outputVariable: "assessment"}), [capability]: selection}});
+                                    } catch { target.setCustomValidity("Use an array of capabilities allowed by this agent"); target.reportValidity(); }
+                                }}"/>`))}
+                        ${field("Output variable", html`<input class="inp" ?readonly="${ro}" .value="${step.agent?.outputVariable ?? ""}"
+                            @change="${ro ? nothing : (e: Event) => this.updateStep(step.id,
+                                {agent: {...(step.agent ?? {ref: ""}), outputVariable: (e.target as HTMLInputElement).value}})}"/>`)}
+                    ` : nothing}
                     ${step.type === "LLM_CALL" ? field("LLM", html`
                         <input class="inp" readonly title="Edit the llm block in the YAML"
                                .value="${(step.llm?.connection || "") + (step.llm?.model ? " · " + step.llm.model : "")
@@ -4291,6 +4354,7 @@ export class MateuWorkflowElk extends LitElement {
         .node.ov-completed .node-shape {stroke: #16a34a !important;}
         .node.ov-error     .node-shape {stroke: #dc2626 !important; stroke-width: 2.4 !important;}
         .node.ov-timeout   .node-shape {stroke: #d97706 !important; stroke-width: 2.4 !important;}
+        .node.ov-review_required .node-shape {stroke: #d97706 !important; stroke-width: 3 !important; stroke-dasharray: 6 3 !important;}
         .node.ov-cancelled .node-shape {stroke: #94a3b8 !important; opacity: .7;}
         .node.ov-compensated .node-shape {stroke: #dc2626 !important; stroke-dasharray: 5 4 !important;}
         /* ran as a compensation: amber, whatever the state says. A completed compensation is
@@ -4411,6 +4475,7 @@ export class MateuWorkflowElk extends LitElement {
         .tip-completed {background: #16a34a;}
         .tip-error {background: #dc2626;}
         .tip-timeout {background: #d97706;}
+        .tip-review_required {background: #d97706;}
         .tip-cancelled {background: #94a3b8;}
         .tip-compensated {background: #dc2626;}
         .tip-undone {background: #f59e0b;}

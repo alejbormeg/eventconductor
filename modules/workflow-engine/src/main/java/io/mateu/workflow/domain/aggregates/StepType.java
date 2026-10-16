@@ -42,6 +42,8 @@ public enum StepType {
      */
     HTTP_CALL,
 
+    /** Invoke an agent published by the IA catalogue through the durable agent worker. */
+    AGENT,
     /**
      * Ask a language model ({@code llm}: a named connection, templated system prompt and prompt, an
      * optional response schema, answer → variables). The engine renders the prompts and dispatches them
