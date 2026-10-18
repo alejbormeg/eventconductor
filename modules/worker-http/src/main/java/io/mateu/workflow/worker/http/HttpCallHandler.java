@@ -10,7 +10,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
-import java.io.InputStream;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
@@ -112,14 +111,13 @@ public class HttpCallHandler implements TaskHandler<HttpCallHandler.Input, Map<S
         var label = connectionName == null ? uri.getHost() : connectionName;
 
         var started = System.nanoTime();
-        HttpResponse<InputStream> response;
+        HttpResponse<String> response;
         try {
-            response = send(client, build(request, connection, uri, method, auth, timeout));
+            response = send(client, build(request, connection, uri, method, auth, timeout), timeout);
             if (response.statusCode() == 401 && auth != null && "oauth2-client-credentials".equals(auth.profile().getType())) {
                 // The cached token may have been revoked or rotated: fetch a fresh one, once.
-                response.body().close();
                 tokens.invalidate(auth.name());
-                response = send(client, build(request, connection, uri, method, auth, timeout));
+                response = send(client, build(request, connection, uri, method, auth, timeout), timeout);
             }
         } catch (HttpTimeoutException e) {
             metrics.call(label, "timeout", System.nanoTime() - started);
@@ -129,7 +127,7 @@ public class HttpCallHandler implements TaskHandler<HttpCallHandler.Input, Map<S
             throw failure("HTTP_IO", method + " " + redacted(uri) + " failed: " + e, retryOn.contains("io"));
         }
         var status = response.statusCode();
-        var body = readCapped(response.body());
+        var body = response.body();
         metrics.call(label, String.valueOf(status), System.nanoTime() - started);
         log.info("HTTP_CALL {} {} → {} in {} ms (step {})", method, redacted(uri), status,
                 (System.nanoTime() - started) / 1_000_000, context == null ? null : context.stepId());
@@ -142,13 +140,11 @@ public class HttpCallHandler implements TaskHandler<HttpCallHandler.Input, Map<S
         return outputs(request.path("output"), status, response.headers().map(), body);
     }
 
-    private HttpResponse<InputStream> send(HttpClient client, HttpRequest request) throws IOException {
-        try {
-            return client.send(request, HttpResponse.BodyHandlers.ofInputStream());
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new IOException("interrupted", e);
-        }
+    /** Sends the request and reads its (capped) body within {@code timeout} — headers and body. */
+    private HttpResponse<String> send(HttpClient client, HttpRequest request, Duration timeout) throws IOException {
+        var max = properties.getMaxResponseBytes();
+        return BoundedExchange.send(client, request, timeout, max,
+                "the response is larger than " + max + " bytes (workflow.http.max-response-bytes)");
     }
 
     private HttpRequest build(JsonNode request, HttpWorkerProperties.Connection connection, URI uri, String method,
@@ -339,17 +335,6 @@ public class HttpCallHandler implements TaskHandler<HttpCallHandler.Input, Map<S
                 .connectTimeout(connectTimeout)
                 .followRedirects(HttpClient.Redirect.NEVER)
                 .build());
-    }
-
-    private String readCapped(InputStream body) throws IOException {
-        try (body) {
-            var bytes = body.readNBytes((int) Math.min(Integer.MAX_VALUE - 1, properties.getMaxResponseBytes() + 1));
-            if (bytes.length > properties.getMaxResponseBytes()) {
-                throw new TaskFailure("HTTP_RESPONSE_TOO_LARGE", "the response is larger than "
-                        + properties.getMaxResponseBytes() + " bytes (workflow.http.max-response-bytes)", false);
-            }
-            return new String(bytes, StandardCharsets.UTF_8);
-        }
     }
 
     private static boolean isSuccess(int status, JsonNode successStatus) {
