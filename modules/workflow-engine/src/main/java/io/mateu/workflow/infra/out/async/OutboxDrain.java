@@ -59,6 +59,8 @@ import static io.mateu.core.infra.JsonSerializer.pojoFromJson;
  *
  * <p>Splitting by key is what makes it safe rather than merely fast: two events of one process are
  * never in flight together, which is the ordering that keying events by process exists to give.
+ * Across pods it is {@link OutboxKeyOrder}'s: a claimed row that would overtake an older pending
+ * row of its process held by another pod (or left Pending by a failed send) is not sent this pass.
  * Concurrency is 1 by default, so this is opt-in until a cluster measurement says otherwise.
  */
 @Component
@@ -145,7 +147,21 @@ public class OutboxDrain {
      * out of Pending. A caller that loops on a full batch must stop when nothing settles, or a
      * batch of permanently failing messages becomes a hot loop.
      */
-    public record Result(int claimed, int settled) {}
+    public record Result(int claimed, int settled, int heldBack) {
+
+        public Result(int claimed, int settled) {
+            this(claimed, settled, 0);
+        }
+
+        /**
+         * Claimed rows that had a chance to settle — what a stall is measured against. A pass whose
+         * every row waited behind another pod's older event of the same process has not failed at
+         * anything and must not be paced like a broker that refuses.
+         */
+        public int attempted() {
+            return claimed - heldBack;
+        }
+    }
 
     /**
      * Claims and delivers up to {@code batchSize} messages. A message whose payload cannot be
@@ -154,19 +170,21 @@ public class OutboxDrain {
      */
     public Result drain(int batchSize, Consumer<DomainEvent> deliver) {
         var result = transactionTemplate.execute(status -> {
-            var ids = claim(batchSize);
-            if (ids.isEmpty()) {
+            var messages = claim(batchSize);
+            if (messages.isEmpty()) {
                 return new Result(0, 0);
             }
+            var claimed = messages.size();
+            var heldBack = holdBackWhatWouldOvertake(messages);
             var poisoned = new ArrayList<OutboxMessageEntity>();
-            var byKey = groupByPartitionKey(ids, poisoned);
+            var byKey = groupByPartitionKey(messages, poisoned);
 
             // Wall-clock across the whole batch, which is what the relay thread actually pays.
             // Before the batch ran concurrently this was also the sum of the acks; now the two
             // differ, and the gap between them is the win.
             var startedAt = System.nanoTime();
             var sent = deliverGroups(byKey, deliver);
-            workflowMetrics.outboxBatchDelivered(ids.size(), Duration.ofNanos(System.nanoTime() - startedAt));
+            workflowMetrics.outboxBatchDelivered(messages.size(), Duration.ofNanos(System.nanoTime() - startedAt));
 
             sent.forEach(message -> message.setStatus(OutboxMessageStatus.Sent.name()));
             poisoned.forEach(message -> message.setStatus(OutboxMessageStatus.Error.name()));
@@ -175,7 +193,7 @@ public class OutboxDrain {
                 touched.addAll(poisoned);
                 outboxMessageEntityRepository.saveAll(touched);
             }
-            return new Result(ids.size(), sent.size() + poisoned.size());
+            return new Result(claimed, sent.size() + poisoned.size(), heldBack);
         });
         return result == null ? new Result(0, 0) : result;
     }
@@ -195,10 +213,8 @@ public class OutboxDrain {
      * already makes to Kafka.
      */
     private Map<String, List<Delivery>> groupByPartitionKey(
-            List<String> ids, List<OutboxMessageEntity> poisoned) {
+            List<OutboxMessageEntity> messages, List<OutboxMessageEntity> poisoned) {
         var claimedAt = LocalDateTime.now();
-        var messages = new ArrayList<OutboxMessageEntity>();
-        outboxMessageEntityRepository.findAllById(ids).forEach(messages::add);
         messages.sort(Comparator
                 .comparing(OutboxMessageEntity::getTimestamp, Comparator.nullsFirst(Comparator.naturalOrder()))
                 .thenComparing(OutboxMessageEntity::getId, Comparator.nullsFirst(Comparator.naturalOrder())));
@@ -314,10 +330,76 @@ public class OutboxDrain {
 
     private record Delivery(OutboxMessageEntity message, DomainEvent payload) {}
 
-    private List<String> claim(int batchSize) {
-        return jdbcTemplate.query(
+    private List<OutboxMessageEntity> claim(int batchSize) {
+        return load(jdbcTemplate.query(
                 dbLockDialect.claimPendingOutboxSql(),
                 ps -> ps.setInt(1, batchSize),
-                (rs, rowNum) -> rs.getString(1));
+                (rs, rowNum) -> rs.getString(1)));
+    }
+
+    /**
+     * Removes from {@code messages} the rows that would overtake an older pending row of their key
+     * this pass does not hold, and returns how many. They stay Pending — locked until this
+     * transaction ends, so no other pod sends them meanwhile either — and go in a later pass. See
+     * {@link OutboxKeyOrder} for why this is a read after the claim rather than part of it.
+     *
+     * <p>The keys are the rows' {@code partition_key} column, the one the read filters on. A batch
+     * whose rows carry no key at all — or none that repeats a key with anything older — costs the
+     * read and nothing else.
+     */
+    private int holdBackWhatWouldOvertake(List<OutboxMessageEntity> messages) {
+        var claimed = new ArrayList<OutboxKeyOrder.Row>(messages.size());
+        var keys = new java.util.LinkedHashSet<String>();
+        LocalDateTime newest = null;
+        for (var message : messages) {
+            claimed.add(new OutboxKeyOrder.Row(message.getId(), message.getPartitionKey(), message.getTimestamp()));
+            if (message.getPartitionKey() != null) {
+                keys.add(message.getPartitionKey());
+                if (message.getTimestamp() != null && (newest == null || message.getTimestamp().isAfter(newest))) {
+                    newest = message.getTimestamp();
+                }
+            }
+        }
+        if (keys.isEmpty()) {
+            return 0;
+        }
+        var bound = java.sql.Timestamp.valueOf(newest == null ? LocalDateTime.now() : newest);
+        var keyList = new ArrayList<>(keys);
+        var pending = new ArrayList<OutboxKeyOrder.Row>();
+        for (int from = 0; from < keyList.size(); from += OutboxKeyOrder.MAX_KEYS_PER_STATEMENT) {
+            var chunk = keyList.subList(from, Math.min(keyList.size(), from + OutboxKeyOrder.MAX_KEYS_PER_STATEMENT));
+            pending.addAll(jdbcTemplate.query(
+                    OutboxKeyOrder.pendingOfKeysSql(chunk.size()),
+                    ps -> {
+                        for (int i = 0; i < chunk.size(); i++) {
+                            ps.setString(i + 1, chunk.get(i));
+                        }
+                        ps.setTimestamp(chunk.size() + 1, bound);
+                    },
+                    (rs, rowNum) -> {
+                        var timestamp = rs.getTimestamp(3);
+                        return new OutboxKeyOrder.Row(rs.getString(1), rs.getString(2),
+                                timestamp == null ? null : timestamp.toLocalDateTime());
+                    }));
+        }
+        var sendable = OutboxKeyOrder.sendable(claimed, pending);
+        var before = messages.size();
+        messages.removeIf(message -> !sendable.contains(message.getId()));
+        var heldBack = before - messages.size();
+        if (heldBack > 0) {
+            log.debug("Holding back {} claimed outbox message(s) behind an older pending event of the "
+                    + "same process held elsewhere", heldBack);
+        }
+        return heldBack;
+    }
+
+
+
+    private List<OutboxMessageEntity> load(List<String> ids) {
+        var messages = new ArrayList<OutboxMessageEntity>();
+        if (!ids.isEmpty()) {
+            outboxMessageEntityRepository.findAllById(ids).forEach(messages::add);
+        }
+        return messages;
     }
 }
