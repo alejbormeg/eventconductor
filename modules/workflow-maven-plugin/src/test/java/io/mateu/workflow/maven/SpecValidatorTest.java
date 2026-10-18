@@ -69,6 +69,98 @@ class SpecValidatorTest {
     }
 
     @Test
+    void anAwaitReplyIsValidated() throws Exception {
+        var valid = new YAMLMapper().readTree("""
+                name: Ask and wait
+                steps:
+                  - id: start
+                    type: START
+                    name: Start
+                  - id: ask
+                    type: PUBLISH_EVENT
+                    name: Ask
+                    preconditionStepId: start
+                    timeout: PT30S
+                    onTimeoutStepId: no-reply
+                    event:
+                      destination: quote-requests
+                      type: com.acme.quote.requested
+                    awaitReply:
+                      messageName: quote-ready
+                      correlationExpression: businessKey
+                      onEvent:
+                        destination: quote-replies
+                        type: com.acme.quote.ready
+                        correlationKey: "${data.requestId}"
+                  - id: no-reply
+                    type: ACTION
+                    name: No reply
+                    topic: work
+                    preconditions:
+                      - stepId: ask
+                        expression: "false"
+                """);
+        assertThat(validator.validate(SpecValidator.Kind.WORKFLOW, valid)).isEmpty();
+
+        var invalid = new YAMLMapper().readTree("""
+                name: Bad replies
+                steps:
+                  - id: start
+                    type: START
+                    name: Start
+                  - id: ask
+                    type: HTTP_CALL
+                    name: Ask
+                    preconditionStepId: start
+                    messageName: quote-ready
+                    http:
+                      url: https://pricing.example.com/quotes
+                    awaitReply:
+                      messageName: quote-ready
+                      correlationExpression: "businessKey +"
+                      onEvent:
+                        destination: "quote replies"
+                        type: com.acme.quote.ready
+                        correlationKey: "${unterminated"
+                  - id: act
+                    type: ACTION
+                    name: Act
+                    topic: work
+                    preconditionStepId: ask
+                    awaitReply:
+                      messageName: m
+                      correlationExpression: businessKey
+                """);
+        assertThat(validator.validate(SpecValidator.Kind.WORKFLOW, invalid))
+                .anySatisfy(v -> assertThat(v).contains("awaitReply.correlationExpression"))
+                .anySatisfy(v -> assertThat(v).contains("awaitReply.onEvent: 'quote replies' is not a valid destination name"))
+                .anySatisfy(v -> assertThat(v).contains("awaitReply.onEvent correlationKey"))
+                .anySatisfy(v -> assertThat(v).contains("only an HTTP_CALL or a PUBLISH_EVENT awaits a reply"))
+                .noneSatisfy(v -> assertThat(v).contains("declares messageName"));
+
+        // Wait fields on a request step itself were always ignored: a warning, never a build failure.
+        var misplaced = new YAMLMapper().readTree("""
+                name: Old definition
+                steps:
+                  - id: start
+                    type: START
+                    name: Start
+                  - id: ask
+                    type: HTTP_CALL
+                    name: Ask
+                    preconditionStepId: start
+                    messageName: quote-ready
+                    correlationExpression: businessKey
+                    http:
+                      url: https://pricing.example.com/quotes
+                """);
+        assertThat(validator.validate(SpecValidator.Kind.WORKFLOW, misplaced)).isEmpty();
+        assertThat(validator.warnings(SpecValidator.Kind.WORKFLOW, misplaced))
+                .contains("Step 'ask' declares messageName, which an HTTP_CALL ignores; to wait for a reply,"
+                        + " put it inside awaitReply.");
+    }
+
+    @Test
     void aTriggerWithoutATypeFailsTheSchema() throws Exception {
         var doc = new YAMLMapper().readTree("""
                 name: No type
