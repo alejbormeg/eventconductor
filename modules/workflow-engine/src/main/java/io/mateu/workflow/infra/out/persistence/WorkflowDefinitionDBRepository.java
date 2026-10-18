@@ -28,6 +28,35 @@ public class WorkflowDefinitionDBRepository implements WorkflowDefinitionReposit
     final WorkflowDefinitionValidator workflowDefinitionValidator;
     final io.mateu.workflow.application.services.WorkflowDefinitionVersioningService versioningService;
 
+    // Optional and resolved when used: the trigger stores do not depend on the definitions, but a
+    // repository that cannot be built without them would make every test harness wire them too.
+    private org.springframework.beans.factory.ObjectProvider<io.mateu.workflow.application.out.EventTriggerRepository> eventTriggers;
+    private org.springframework.beans.factory.ObjectProvider<io.mateu.workflow.application.out.TriggerPauseRepository> triggerPauses;
+    // Programmatic, not @Transactional: an annotation would make this bean a CGLIB proxy, and the
+    // admin UI's view models hold it as a field that Mateu serializes — a proxy serializes into a
+    // self-referencing cycle and every process detail page fails.
+    private org.springframework.beans.factory.ObjectProvider<org.springframework.transaction.support.TransactionTemplate> transactions;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setTransactions(org.springframework.beans.factory.ObjectProvider<org.springframework.transaction.support.TransactionTemplate> transactions) {
+        this.transactions = transactions;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setTriggerStores(
+            org.springframework.beans.factory.ObjectProvider<io.mateu.workflow.application.out.EventTriggerRepository> eventTriggers,
+            org.springframework.beans.factory.ObjectProvider<io.mateu.workflow.application.out.TriggerPauseRepository> triggerPauses) {
+        this.eventTriggers = eventTriggers;
+        this.triggerPauses = triggerPauses;
+    }
+
+    /** See {@link io.mateu.workflow.application.services.DefinitionTriggerCleanup}. */
+    private io.mateu.workflow.application.services.DefinitionTriggerCleanup triggerCleanup() {
+        return new io.mateu.workflow.application.services.DefinitionTriggerCleanup(
+                eventTriggers == null ? null : eventTriggers.getIfAvailable(),
+                triggerPauses == null ? null : triggerPauses.getIfAvailable());
+    }
+
     @Override
     public Optional<WorkflowDefinition> findById(String id) {
         return workflowDefinitionEntityRepository.findById(id).map(this::map);
@@ -197,6 +226,7 @@ public class WorkflowDefinitionDBRepository implements WorkflowDefinitionReposit
                 workflowDefinition.tags() == null ? null : toJson(workflowDefinition.tags()),
                 retentionToJson(workflowDefinition.retention())
         ));
+        triggerCleanup().definitionSaved(workflowDefinition);
         return workflowDefinition.id();
     }
 
@@ -207,6 +237,16 @@ public class WorkflowDefinitionDBRepository implements WorkflowDefinitionReposit
 
     @Override
     public void deleteAllById(List<String> selectedIds) {
+        var tx = transactions == null ? null : transactions.getIfAvailable();
+        if (tx == null) {
+            doDeleteAllById(selectedIds);
+            return;
+        }
+        tx.executeWithoutResult(status -> doDeleteAllById(selectedIds));
+    }
+
+    /** The definitions and their UI/API triggers and pauses go together, or not at all. */
+    private void doDeleteAllById(List<String> selectedIds) {
         selectedIds.stream().map(workflowDefinitionEntityRepository::findById)
                 .map(Optional::orElseThrow)
                 .filter(entity -> WorkflowStatus.of(entity.getRuntimeStatus(), false, false)
@@ -217,5 +257,6 @@ public class WorkflowDefinitionDBRepository implements WorkflowDefinitionReposit
                     throw new RuntimeException("Cannot delete an active workflow definition (disable or archive it first): " + entity.getName());
                 });
         workflowDefinitionEntityRepository.deleteAllById(selectedIds);
+        triggerCleanup().definitionsDeleted(selectedIds);
     }
 }
