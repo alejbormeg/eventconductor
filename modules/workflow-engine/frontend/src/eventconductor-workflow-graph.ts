@@ -47,6 +47,15 @@ if (typeof window !== "undefined" && !window.__ecClipboardBridge) {
 
 // ── Domain types ─────────────────────────────────────────────────────────────
 
+/** Catalogue metadata safe to expose to an editor host; excludes runtime configuration and secrets. */
+export interface AgentCatalogueEntry {
+    id: string;
+    name?: string;
+    mcp?: string[];
+    rag?: string[];
+    peers?: string[];
+}
+
 type StepType =
     | "START" | "ACTION" | "USER_TASK" | "RULE" | "TIMER"
     | "WAIT_FOR_MESSAGE" | "SEND_MESSAGE" | "FORK" | "JOIN" | "CHOICE" | "PROCESS" | "END" | "DYNAMIC"
@@ -533,6 +542,10 @@ const SYMBOLS: Record<string, ReturnType<typeof svg>> = {
     component: svg`<rect x="3.5" y="0.5" width="8" height="11" rx="1"/><rect x="0.5" y="2.5" width="6" height="2.6"/><rect x="0.5" y="6.9" width="6" height="2.6"/>`,
     // A lightning spark — the generator step that grows the graph at runtime.
     spark:     svg`<path d="M6.5 0.5 L2 6.5 H5.5 L4.5 11.5 L9.5 5 H6 Z"/>`,
+    // An AI agent: the same 12×12 stroke glyph style as the other task icons.
+    robot:     svg`<rect x="2" y="3.5" width="8" height="7" rx="1.5"/>
+                   <path d="M6 3.5 V1.5 M0.5 5.5 V8.5 M11.5 5.5 V8.5 M4.5 8.5 H7.5" stroke-linecap="round"/>
+                   <circle cx="6" cy="1" r="0.5"/><circle cx="4.2" cy="6" r="0.6"/><circle cx="7.8" cy="6" r="0.6"/>`,
     // A padlock (shackle closed) for LOCK; the same body with an open shackle for UNLOCK.
     lock:      svg`<rect x="2" y="5.5" width="8" height="6" rx="1"/><path d="M3.5 5.5 V3.6 Q3.5 1.2 6 1.2 Q8.5 1.2 8.5 3.6 V5.5"/>`,
     unlock:    svg`<rect x="2" y="5.5" width="8" height="6" rx="1"/><path d="M3.5 5.5 V3.6 Q3.5 1.2 6 1.2 Q8.5 1.2 8.5 3.6" />`,
@@ -1135,10 +1148,51 @@ export class MateuWorkflowElk extends LitElement {
     /** When true, all editing interactions are disabled. */
     @property({type: Boolean}) readOnly = false;
     @property() agentCatalogueUrl = "/api/workflow-agents";
-    @state() private agentCatalogue: {id: string; name?: string; mcp?: string[]; rag?: string[]; peers?: string[]}[] = [];
+    /** IDE hosts supply catalogue metadata through events instead of browser HTTP or credentials. */
+    @property({type: Boolean, attribute: "host-agent-catalogue"}) hostAgentCatalogue = false;
+    @state() private agentCatalogue: AgentCatalogueEntry[] = [];
     @state() private agentCatalogueError = "";
 
+    /** Accept only the catalogue projection shared by the web app and editor hosts. */
+    public setAgentCatalogue(entries: AgentCatalogueEntry[], error = "") {
+        if (error) {
+            this.agentCatalogue = [];
+            this.agentCatalogueError = error;
+            return;
+        }
+        try {
+            if (!Array.isArray(entries)) throw new Error("Invalid catalogue response");
+            const projected = entries.map(entry => {
+                if (!entry || typeof entry !== "object" || typeof entry.id !== "string" || !entry.id.trim()
+                    || (entry.name != null && typeof entry.name !== "string"))
+                    throw new Error("Invalid catalogue response");
+                for (const capability of ["mcp", "rag", "peers"] as const) {
+                    const values = entry[capability];
+                    if (values != null && (!Array.isArray(values) || values.some(value => typeof value !== "string")))
+                        throw new Error("Invalid catalogue response");
+                }
+                return {
+                    id: entry.id,
+                    name: entry.name,
+                    mcp: entry.mcp == null ? undefined : [...entry.mcp],
+                    rag: entry.rag == null ? undefined : [...entry.rag],
+                    peers: entry.peers == null ? undefined : [...entry.peers],
+                };
+            });
+            this.agentCatalogue = projected;
+            this.agentCatalogueError = "";
+        } catch (error) {
+            this.agentCatalogue = [];
+            this.agentCatalogueError = error instanceof Error ? error.message : String(error);
+        }
+    }
+
     private async loadAgentCatalogue() {
+        if (this.hostAgentCatalogue) {
+            this.agentCatalogueError = "";
+            this.dispatchEvent(new CustomEvent("ec-agent-catalogue-request", {bubbles: true, composed: true}));
+            return;
+        }
         try {
             const endpoint = new URL(this.agentCatalogueUrl, window.location.href);
             // Mateu's Axios interceptor does not cover fetch. Reuse its established token key,
@@ -1150,11 +1204,10 @@ export class MateuWorkflowElk extends LitElement {
             if (token) headers.Authorization = "Bearer " + token;
             const response = await fetch(endpoint.href, {credentials: "same-origin", headers});
             if (!response.ok) throw new Error("Catalogue unavailable (" + response.status + ")");
-            const entries = await response.json();
-            if (!Array.isArray(entries)) throw new Error("Invalid catalogue response");
-            this.agentCatalogue = entries;
-            this.agentCatalogueError = "";
-        } catch (error) { this.agentCatalogueError = String(error); }
+            this.setAgentCatalogue(await response.json());
+        } catch (error) {
+            this.setAgentCatalogue([], error instanceof Error ? error.message : String(error));
+        }
     }
 
     /**
@@ -3821,10 +3874,22 @@ export class MateuWorkflowElk extends LitElement {
             </div>`;
     }
 
+    /** A deliberate agent selection/reset removes legacy per-workflow capability overrides. */
+    private useAgentCatalogueConfiguration(step: WorkflowStep, ref = step.agent?.ref ?? "") {
+        const agent: NonNullable<WorkflowStep["agent"]> = {...(step.agent ?? {outputVariable: "assessment"}), ref};
+        delete agent.mcp;
+        delete agent.rag;
+        delete agent.peers;
+        this.updateStep(step.id, {agent});
+    }
+
     private renderPanel() {
         const step = this.wf.steps.find(s => s.id === this.selectedId);
         if (!step) return "";
         const ro = this.readOnly;
+        const catalogueAgent = this.agentCatalogue.find(agent => agent.id === step.agent?.ref);
+        const hasAgentCapabilityOverrides = (["mcp", "rag", "peers"] as const)
+            .some(capability => step.agent?.[capability] != null);
 
         const field = (label: string, body: unknown) => html`
             <div class="field">
@@ -3899,10 +3964,15 @@ export class MateuWorkflowElk extends LitElement {
                                .value="${(step.http?.method || "GET") + " " + (step.http?.connection
                                    ? step.http.connection + (step.http.path || "") : (step.http?.url || ""))}"/>`) : ""}
                     ${step.type === "AGENT" ? html`
-                        ${field("Published agent", html`<input class="inp" list="ec-agent-options" ?readonly="${ro}"
-                            .value="${step.agent?.ref ?? ""}" @change="${ro ? nothing : (e: Event) => this.updateStep(step.id,
-                                {agent: {...(step.agent ?? {outputVariable: "assessment"}), ref: (e.target as HTMLInputElement).value}})}"/>
-                            <datalist id="ec-agent-options">${this.agentCatalogue.map(a => html`<option value="${a.id}">${a.name || a.id}</option>`)}</datalist>
+                        ${field("Published agent", html`<select class="inp" ?disabled="${ro || !this.agentCatalogue.length}"
+                            @change="${ro ? nothing : (e: Event) => {
+                                const ref = (e.target as HTMLSelectElement).value;
+                                if (ref !== step.agent?.ref) this.useAgentCatalogueConfiguration(step, ref);
+                            }}">
+                            <option value="" disabled ?selected="${!step.agent?.ref}">Select a published agent</option>
+                            ${step.agent?.ref && !catalogueAgent ? html`<option value="${step.agent.ref}" selected>${step.agent.ref} (catalogue metadata unavailable)</option>` : nothing}
+                            ${this.agentCatalogue.map(a => html`<option value="${a.id}" ?selected="${a.id === step.agent?.ref}">${a.name || a.id} — ${a.id}</option>`)}
+                            </select>
                             ${!ro && this.agentCatalogueError ? html`<small role="status">${this.agentCatalogueError}. Catalogue validation runs on import.</small>
                                 <button type="button" @click="${() => this.loadAgentCatalogue()}">Reload catalogue</button>` : nothing}`)}
                         ${field("Task prompt", html`<textarea class="inp" rows="4" ?readonly="${ro}"
@@ -3915,19 +3985,21 @@ export class MateuWorkflowElk extends LitElement {
                                     {agent: {...(step.agent ?? {ref: "", outputVariable: "assessment"}), input}}); }
                                 catch { target.setCustomValidity("Enter valid JSON"); target.reportValidity(); }
                             }}"></textarea>`)}
-                        ${(["mcp", "rag", "peers"] as const).map(capability => field(capability.toUpperCase() + " (JSON array; blank inherits)", html`
-                            <small>Allowed: ${(this.agentCatalogue.find(a => a.id === step.agent?.ref)?.[capability] ?? []).join(", ") || "none"}</small>
-                            <input class="inp" ?readonly="${ro}" .value="${step.agent?.[capability] == null ? "" : JSON.stringify(step.agent[capability])}"
-                                @change="${ro ? nothing : (e: Event) => {
-                                    const target = e.target as HTMLInputElement;
-                                    try { const selection = target.value.trim() ? JSON.parse(target.value) : undefined;
-                                        if (selection != null && (!Array.isArray(selection) || selection.some(v => typeof v !== "string"))) throw new Error();
-                                        const allowed = this.agentCatalogue.find(a => a.id === step.agent?.ref)?.[capability];
-                                        if (allowed && selection?.some(v => !allowed.includes(v))) throw new Error();
-                                        target.setCustomValidity(""); this.updateStep(step.id,
-                                            {agent: {...(step.agent ?? {ref: "", outputVariable: "assessment"}), [capability]: selection}});
-                                    } catch { target.setCustomValidity("Use an array of capabilities allowed by this agent"); target.reportValidity(); }
-                                }}"/>`))}
+                        ${(["mcp", "rag", "peers"] as const).map(capability => field(capability === "peers" ? "Peers" : capability.toUpperCase(), html`
+                            <textarea class="inp" rows="2" readonly
+                                title="Configured in the agent catalogue"
+                                .value="${!step.agent?.ref ? "Select a published agent"
+                                    : catalogueAgent?.[capability] == null ? "Catalogue metadata unavailable"
+                                    : JSON.stringify(catalogueAgent[capability], null, 2)}"></textarea>
+                            <small>Configured in the agent catalogue.</small>`))}
+                        ${hasAgentCapabilityOverrides ? html`<div class="field">
+                            <small role="status">This workflow contains legacy capability overrides that still restrict execution. Use the catalogue configuration or select another agent to remove them.</small>
+                            <pre>${JSON.stringify(Object.fromEntries((["mcp", "rag", "peers"] as const)
+                                .filter(capability => step.agent?.[capability] != null)
+                                .map(capability => [capability, step.agent?.[capability]])), null, 2)}</pre>
+                            ${!ro ? html`<button type="button"
+                                @click="${() => this.useAgentCatalogueConfiguration(step)}">Use catalogue configuration</button>` : nothing}
+                        </div>` : nothing}
                         ${field("Output variable", html`<input class="inp" ?readonly="${ro}" .value="${step.agent?.outputVariable ?? ""}"
                             @change="${ro ? nothing : (e: Event) => this.updateStep(step.id,
                                 {agent: {...(step.agent ?? {ref: ""}), outputVariable: (e.target as HTMLInputElement).value}})}"/>`)}

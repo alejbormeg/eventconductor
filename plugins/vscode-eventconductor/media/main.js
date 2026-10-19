@@ -33,6 +33,12 @@
     } else if (msg.type === "parseError") {
       errorBox.textContent = "Could not parse this .ec file: " + msg.message;
       errorBox.style.display = "block";
+    } else if (msg.type === "agentCatalogue") {
+      customElements.whenDefined("eventconductor-workflow-graph").then(() => {
+        el.setAgentCatalogue(msg.entries, msg.error);
+      });
+    } else if (msg.type === "reloadAgentCatalogue") {
+      vscode.postMessage({ type: "requestAgentCatalogue" });
     }
   });
 
@@ -40,6 +46,11 @@
   el.addEventListener("value-changed", (e) => {
     if (applying) return; // this change came from us setting the value, not a user edit
     vscode.postMessage({ type: "edit", value: e.detail.value });
+  });
+
+  // The extension host owns network access and credentials. The webview requests only a reload.
+  el.addEventListener("ec-agent-catalogue-request", () => {
+    vscode.postMessage({ type: "requestAgentCatalogue" });
   });
 
   // Exporting. The component would otherwise hand the file to the browser through a blob URL,

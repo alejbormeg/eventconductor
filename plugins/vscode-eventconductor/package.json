@@ -173,6 +173,10 @@
       {
         "command": "eventconductor.addTaskDependency",
         "title": "EventConductor: Add Task Dependency"
+      },
+      {
+        "command": "eventconductor.configureAgentCatalogue",
+        "title": "EventConductor: Configure Agent Catalogue"
       }
     ],
     "menus": {
@@ -243,13 +247,25 @@
           "group": "navigation@2"
         }
       ]
+    },
+    "configuration": {
+      "title": "EventConductor",
+      "properties": {
+        "eventconductor.agentCatalogueUrl": {
+          "type": "string",
+          "default": "",
+          "scope": "machine",
+          "description": "Full agent catalogue endpoint URL, for example http://127.0.0.1:18105/api/workflow-agents. Set credentials with EventConductor: Configure Agent Catalogue; never put credentials in this URL."
+        }
+      }
     }
   },
   "scripts": {
     "sync-assets": "node scripts/sync-assets.js",
     "compile": "npm run sync-assets && tsc -p ./",
     "watch": "tsc -watch -p ./",
-    "vscode:prepublish": "npm run compile"
+    "vscode:prepublish": "npm run compile",
+    "test": "npm run compile && node --test test/*.test.cjs"
   },
   "dependencies": {
     "js-yaml": "^4.3.2"

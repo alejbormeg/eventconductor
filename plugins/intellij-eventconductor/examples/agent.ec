@@ -8,11 +8,10 @@ steps:
     name: Assess synthetic case
     preconditionStepId: start
     agent:
-      ref: synthetic-case-assessor
+      ref: workflow-case-assessor
       taskPrompt: Assess the supplied synthetic case.
       input:
         caseId: "${caseId}"
-      mcp: [synthetic-case-data]
       outputVariable: assessment
     timeout: 300000
     retries: 0

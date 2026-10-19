@@ -12,12 +12,11 @@ The workflow chooses the task and explicit input. Credentials never belong in a 
   type: AGENT
   name: Assess synthetic case
   agent:
-    ref: synthetic-case-assessor
+    ref: workflow-case-assessor
     taskPrompt: Assess this case using the available evidence.
     input:
       caseId: "${caseId}"
       case: "${caseData}"
-    mcp: [synthetic-case-data]
     outputVariable: assessment
   timeout: 300000
   retries: 0
@@ -29,10 +28,13 @@ is final. Durable recovery and message redelivery retain the same invocation and
 results; they do not repeat a failed paid model call. Explicitly restarting a stopped process
 creates a new invocation. Input defaults to `{}`; capability selections
 `mcp`, `rag`, `peers` inherit when absent and disable when `[]`. Selections can only narrow the
-published agent's capabilities. The graphical editor lists the published catalogue and edits
-the prompt, input, capability selections and output variable. Definition import fails if the
-catalogue cannot be read or a reference/selection is invalid. The Maven plugin validates the
-file's structure and expressions; it does not contact the catalogue.
+published agent's capabilities. The graphical editor selects a published agent and edits
+the task prompt, input and output variable. MCP, RAG and peers are displayed read-only from
+the catalogue. Existing capability overrides remain active until the author explicitly chooses
+**Use catalogue configuration** or selects another agent. In VS Code, run **EventConductor:
+Configure Agent Catalogue** to set the endpoint and store its credentials in SecretStorage.
+Definition import fails if the catalogue cannot be read or a reference/selection is invalid.
+The Maven plugin validates the file's structure and expressions; it does not contact the catalogue.
 
 The engine sends the generic `run-agent@1` task on `agent-calls`. Its only task variable is
 `__agent`, containing the rendered explicit input, instruction, selections, output variable,
