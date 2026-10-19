@@ -487,6 +487,38 @@ class SimpleProcessViewModelTest {
         assertThat(view.isHidden("invocation", null)).isFalse();
     }
 
+    // --- updates: the Updates tab --------------------------------------------------------------
+
+    @Test
+    void theUpdatesTabListsTheProcessesUpdatesAndHidesWhenThereAreNone() {
+        var updates = new io.mateu.workflow.infra.out.memory.InMemoryProcessUpdateRepository();
+        var at = java.time.LocalDateTime.of(2026, 10, 19, 9, 0);
+        updates.insert(new io.mateu.workflow.application.updates.ProcessUpdate("u-1", "p-1", "wd", "changeAddress", "u-1",
+                null, "{\"card\":\"****\"}", io.mateu.workflow.application.updates.ProcessUpdate.Status.COMPLETED,
+                "{\"ok\":true,\"pin\":\"1234\"}", null, "ana", true, at, at, null));
+        updates.insert(new io.mateu.workflow.application.updates.ProcessUpdate("u-2", "p-1", "wd", "changeAddress", "u-2",
+                null, null, io.mateu.workflow.application.updates.ProcessUpdate.Status.NOT_ACCEPTED, null, "finished",
+                null, false, at.plusMinutes(1), at.plusMinutes(1), null));
+
+        var entries = SimpleProcessViewModel.updateEntries("p-1", updates,
+                io.mateu.workflow.crypto.SensitiveNames.of(List.of("pin")));
+
+        assertThat(entries).hasSize(2);
+        assertThat(entries.get(0).status()).isEqualTo("Completed (with start)");
+        assertThat(entries.get(0).caller()).isEqualTo("ana");
+        assertThat(entries.get(0).payload()).isEqualTo("{\"card\":\"****\"}");
+        assertThat(entries.get(0).result()).isEqualTo("{\"ok\":true,\"pin\":\"••••\"}");
+        assertThat(entries.get(1).status()).isEqualTo("Not accepted");
+        assertThat(entries.get(1).caller()).isEqualTo("anonymous");
+        assertThat(entries.get(1).result()).isEqualTo("finished");
+        assertThat(SimpleProcessViewModel.updateEntries("p-1", null, io.mateu.workflow.crypto.SensitiveNames.NONE)).isEmpty();
+
+        var view = new SimpleProcessViewModel(null, null, null, null, null, null, null, null, null, null);
+        assertThat(view.isHidden("updates", null)).isTrue();
+        view.updates = entries;
+        assertThat(view.isHidden("updates", null)).isFalse();
+    }
+
     @Test
     void aProcessNobodyInvokedSynchronouslyHasNoBadge() {
         var view = new SimpleProcessViewModel(null, null, null, null, null, null, null, null, null, null);
