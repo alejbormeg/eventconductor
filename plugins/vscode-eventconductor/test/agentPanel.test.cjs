@@ -28,7 +28,7 @@ for (const ref of ['previous-agent', 'new-agent']) {
     const step = {
       id: 'assess', type: 'AGENT', agent: {
         ref: 'previous-agent', taskPrompt: 'Assess this case', input: { caseId: '${caseId}' }, outputVariable: 'assessment',
-        mcp: [], rag: ['limited-handbook'], peers: ['limited-peer'],
+        mcp: [], rag: ['limited-handbook'], peers: ['limited-peer'], allowSensitiveVariables: true,
       },
     };
     const original = structuredClone(step);
@@ -37,6 +37,7 @@ for (const ref of ['previous-agent', 'new-agent']) {
     prototype.useAgentCatalogueConfiguration.call(component, step, ref);
     assert.deepEqual(changes, [['assess', { agent: {
       ref, taskPrompt: 'Assess this case', input: { caseId: '${caseId}' }, outputVariable: 'assessment',
+      allowSensitiveVariables: true,
     } }]]);
     assert.deepEqual(step, original, 'migration must not mutate the imported workflow object');
   });

@@ -99,7 +99,9 @@ interface WorkflowStep {
     event?: { destination?: string; type?: string; key?: string };
     /** HTTP_CALL only: the request to make. */
     http?: { connection?: string; url?: string; method?: string; path?: string };
-    agent?: {ref: string; taskPrompt?: string; input?: unknown; mcp?: string[]; rag?: string[]; peers?: string[]; outputVariable: string};
+    agent?: {ref: string; taskPrompt?: string; input?: unknown; mcp?: string[]; rag?: string[]; peers?: string[]; outputVariable: string;
+        /** Lets taskPrompt/input read the definition's sensitive variables; task context, kept when the agent changes. */
+        allowSensitiveVariables?: boolean};
     /** LLM_CALL only: what to ask the model. */
     llm?: { connection?: string; model?: string; responseSchema?: unknown };
     /** Worker steps only: 0–100, higher first; absent means the default, 50. */
