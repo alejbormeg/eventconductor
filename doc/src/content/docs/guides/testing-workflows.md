@@ -230,6 +230,38 @@ good, a `503` or `thenIoError()` is retried. `whenLlmCall("triage").thenAnswer("
 does the same for a model: `outputVariable`, `usageVariable` and `output` expressions over `text`,
 `json`, `usage` and `model` are applied (the `responseSchema` itself is not validated).
 
+### Agents
+
+An `AGENT` step never reaches the IA catalogue or an agent runtime in a test. The kit's catalogue takes every
+reference a definition names as published, and `whenAgent` scripts what the runtime answers. Each invocation takes
+the next answer, so a `forEach` gets one per item. Without a stub the step fails.
+
+```java
+var agent = runtime.whenAgent("assess").thenOutput("{\"decision\":\"accept\"}");
+
+var process = runtime.start("claim-assessment", "C-1", Map.of("claimId", "C-1"));
+
+assertThat(process).isCompleted().hasVariable("assessment", Map.of("decision", "accept"));
+assertThat(agent.lastRequest()).containsEntry("taskPrompt", "Assess claim C-1");
+```
+
+A review holds the process until the runtime reconciles it. `resolveAgentReview` does that with the next answer of
+the script:
+
+```java
+runtime.whenAgent("assess").thenReviewRequired().thenOutput("{\"decision\":\"refer\"}");
+var process = runtime.start("claim-assessment", "C-2", Map.of("claimId", "C-2"));
+assertThat(process).hasStatus(ProcessStatus.PAUSED).hasStepStatus("assess", StepExecutionStatus.REVIEW_REQUIRED);
+
+runtime.resolveAgentReview(process, "assess");
+assertThat(process).isCompleted();
+```
+
+`thenFail(code, message)` fails the step (agent failures are final). `thenNoReply()` leaves the invocation in flight:
+`advanceTime` past its timeout holds it for review, and a following `thenCancelled()` is the runtime confirming it
+stopped, which times the step out (`onTimeoutStepId` applies). Every reply names the invocation, so a parked agent
+task can also be answered with `completeTask(process, "assess", Map.of("assessment", json))`.
+
 ## Messages, events and replies
 
 | Call | What it does |

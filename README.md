@@ -55,7 +55,7 @@ instead of the running engine. See [Build-time validation](#build-time-validatio
 ### Tested in plain JUnit, with time skipping
 The `workflow-test` module (test scope) runs **your** definitions inside a JUnit 5 test — the
 real engine, in memory — with task mocks (`whenTask("charge-card").thenFail("DECLINED", false)`),
-`HTTP_CALL`/`LLM_CALL` stubs that never reach the network, AssertJ assertions on the process
+`HTTP_CALL`/`LLM_CALL`/`AGENT` stubs that never reach the network, AssertJ assertions on the process
 (`isCompensated()`, `hasPassedSteps(...)`, `isWaitingAt(...)`, `hasReplied(...)`) and a clock you
 move: `advanceTime(Duration.ofDays(3))` fires every TIMER, timeout, retry backoff and cron
 occurrence on the way, in milliseconds. See the
@@ -502,6 +502,7 @@ public class MyApplication {
 | `downstream` | outbound | Task execution requests sent to workers |
 | `http-calls` | outbound | `HTTP_CALL` requests, served by `http-worker-standalone-app` |
 | `llm-calls` | outbound | `LLM_CALL` prompts, served by `llm-worker-standalone-app` |
+| `agent-calls` | outbound | `AGENT` invocations (`run-agent@1`), served by the IA agent runtime |
 | `dead-letter` | outbound | Events the engine can never process, parked for inspection and replay |
 
 ### Kafka configuration (application.properties)
@@ -641,6 +642,7 @@ because nothing would ever start it.
 | `PUBLISH_EVENT` | Publishes a domain event (CloudEvent) from the process's state, via the outbox | `event` |
 | `HTTP_CALL` | Calls an HTTP endpoint and maps the response into variables (built-in `http-call` task) | `http` |
 | `LLM_CALL` | Asks a language model and maps its answer into variables (built-in `llm-call` task) | `llm` |
+| `AGENT` | Invokes an agent published in the IA catalogue (its prompt, model, tools and output schema are the catalogue's), run by the IA agent runtime; durable invocations, review holds ([guide](doc/src/content/docs/guides/workflow-agents.md)) | `agent` |
 | `END` | Marks the workflow as complete | — |
 
 Steps run as a **pure dataflow**: a step starts as soon as all its preconditions have

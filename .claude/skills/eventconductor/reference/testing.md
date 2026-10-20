@@ -126,6 +126,7 @@ the Spring context (and its processes) is shared across tests.
 | chain `.thenFail("X").thenComplete()` | consecutive answers; the last repeats |
 | `whenHttpCall("step").thenRespond(status, body)` / `.thenIoError()` | stubs HTTP_CALL (`body` a JSON/text `String`; unstubbed calls fail); `.lastRequest()`. No `worker-http`/`worker-embedded` or `workflow.http.connections` needed in tests — those are runtime-only |
 | `whenLlmCall("step").thenAnswer(text)` | stubs LLM_CALL |
+| `whenAgent("step").thenOutput(json)` / `.thenReviewRequired()` / `.thenFail(code, msg)` / `.thenCancelled()` / `.thenNoReply()` | stubs AGENT (one answer per invocation; a forEach has one per item); every reference is taken as published, no catalogue is contacted; `resolveAgentReview(process, step)` reconciles a held invocation with the next answer; `.lastRequest()` |
 
 Unmocked tasks wait (or run your real `TaskHandler`s if booted: `@EventConductorTest(classes = {MyApp.class})`
 with `worker-embedded`). Answer by hand: `completeTask(process, stepId, vars)`,

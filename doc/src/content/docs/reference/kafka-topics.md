@@ -16,6 +16,7 @@ Events are serialized as JSON with a `type` property carrying the registered eve
 | `downstream` | Outbound | Task execution requests sent to workers |
 | `http-calls` | Outbound | `HTTP_CALL` requests, served by `http-worker-standalone-app` (a step's `topic` overrides) |
 | `llm-calls` | Outbound | `LLM_CALL` prompts, served by `llm-worker-standalone-app` (a step's `topic` overrides) |
+| `agent-calls` | Outbound | `AGENT` invocations (`run-agent@1`), served by the IA agent runtime; replies come back on `upstream` naming their `invocationId` |
 | `dead-letter` | Outbound | Events the engine can never process, parked unchanged for inspection and replay |
 | `process-index` | Internal | Process status changes for the standalone projector (`workflow.projection.mode=remote` only) |
 | `human-tasks` | Outbound | Every change of a human task (created, assigned, claimed, released, completed, cancelled, escalated), published by `forms-standalone-app` (`FORMS_HUMAN_TASKS_TOPIC`) as a binary CloudEvent (`ce_type` `io.eventconductor.task.<event>`) for inboxes and notification centres — and for [event triggers](/guides/domain-event-triggers/) when a destination maps to it; the engine does not read it otherwise |
@@ -174,6 +175,20 @@ A USER_TASK's request carries its rendered assignment in the `__task` variable (
 **Published by:** Orchestrator
 
 **Consumed by:** `http-worker-standalone-app` (`http-calls`, overridable with `HTTP_CALLS_TOPIC`) and `llm-worker-standalone-app` (`llm-calls`, overridable with `LLM_CALLS_TOPIC`), which report back on `upstream` like any worker.
+
+## agent-calls
+
+**Purpose:** The invocations of [`AGENT` steps](/guides/workflow-agents/): `TaskExecutionRequested` with task id
+`run-agent@1`, one variable `__agent` (the rendered request — sealed when the process declares sensitive variables)
+and an `invocationId`. A cancellation (`TaskCancellationRequested`) for an agent names the same `invocationId`.
+
+**Published by:** Orchestrator
+
+**Consumed by:** The IA agent runtime, which reports back on `upstream` with `TaskStatusChanged` carrying the
+`invocationId`, a growing `stateSequence` and — when it reconciles a held invocation — `reviewResolved: true`. A reply
+that does not name the step's current invocation, or repeats an older sequence, is ignored, so a redelivered reply
+changes nothing; a completion without exactly the step's `outputVariable` as valid JSON is refused as not
+retryable (parked on `dead-letter`).
 
 ## dead-letter
 

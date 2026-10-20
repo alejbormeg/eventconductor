@@ -526,6 +526,22 @@ The gateway reads the destinations' topics from the same `workflow.events.destin
 | `workflow.llm.connections.<name>.timeout` | `PT60S` | One call's limit; a longer one fails the step as `LLM_IO` (retried). |
 | `workflow.llm.connections.<name>.structured-output` | `prompt` | How a `responseSchema` is enforced: `prompt` (in the system prompt, then validated) or `native` (also the provider's structured output). |
 
+### Agents (`workflow.agents.*`, in the engine)
+
+The IA catalogue that [`AGENT` steps](/guides/workflow-agents/) are validated against when a definition is imported.
+Read with OAuth2 client credentials; without a catalogue configured, a definition with an `AGENT` step is refused.
+
+| Property | Environment variable | Default | Description |
+|---|---|---|---|
+| `workflow.agents.catalogue-url` | `WORKFLOW_AGENTS_CATALOGUE_URL` | *(unset: no catalogue)* | The published catalogue's endpoint (a JSON list of agents). Setting it enables the catalogue. |
+| `workflow.agents.token-uri` | `WORKFLOW_AGENTS_TOKEN_URI` | — | The token endpoint the client credentials are exchanged at. |
+| `workflow.agents.client-id` | `WORKFLOW_AGENTS_CLIENT_ID` | `workflow-agent-executor` | The engine's service-account client id. |
+| `workflow.agents.client-secret` | `WORKFLOW_AGENTS_CLIENT_SECRET` | — | Its secret. Configuration only — from an env var, a K8s secret, Vault; never in a definition. |
+
+The engine dispatches `run-agent@1` on the `agent-calls` topic; the agent runtime serves it and replies on
+`upstream`. HTTP workers with `workflow.workers.http.topics=*` leave `agent-calls` to the runtime. The test kit
+replaces the catalogue with one that accepts every reference, so tests never contact it.
+
 ## Kafka (when `workflow.mode=kafka`)
 
 ```properties

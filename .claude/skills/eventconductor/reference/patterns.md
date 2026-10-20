@@ -419,6 +419,63 @@ One model call: needs `worker-llm` + a Spring AI provider; the key lives in `wor
     output: { category: "json.category" }
 ```
 
+## 8b. Run a published agent (AGENT)
+
+An agent governed in the IA catalogue (its own prompt, model, tools and output schema): the workflow gives the task
+and explicit input, the IA runtime runs it, the result is one JSON variable. The engine checks `ref` against the
+catalogue at import (`workflow.agents.catalogue-url`); tests use `runtime.whenAgent(step)`.
+
+```yaml
+id: claim-assessment
+name: Assess a claim with a published agent
+version: 1
+steps:
+  - id: start
+    type: START
+    name: Start
+  - id: assess
+    type: AGENT
+    name: Assess the claim
+    preconditionStepId: start
+    retries: 0
+    agent:
+      ref: claims-assessor
+      taskPrompt: "Assess claim ${claimId} against the policy."
+      input: { claimId: "${claimId}", amount: "${amount}" }
+      outputVariable: assessment
+  - id: decide
+    type: CHOICE
+    name: Accepted?
+    preconditionStepId: assess
+  - id: accept
+    type: ACTION
+    name: Accept the claim
+    topic: claims
+    preconditions:
+      - stepId: decide
+        expression: "json:parse(assessment).decision == 'accept'"
+  - id: refer
+    type: USER_TASK
+    name: Refer to an adjuster
+    formId: claim-review
+    preconditions:
+      - stepId: decide                 # the default branch
+  - id: done
+    type: JOIN
+    name: Done
+    joinType: XOR
+    preconditionStepIds: [ accept, refer ]
+  - id: end
+    type: END
+    name: End
+    preconditionStepId: done
+```
+
+An uncertain outcome (the runtime asks for a review, the step times out, the process is cancelled while it runs)
+holds the step `REVIEW_REQUIRED` and the process `PAUSED` until the runtime reconciles it. In a definition with
+`sensitiveVariables`, reading one in `taskPrompt`/`input` needs `agent.allowSensitiveVariables: true`. In a test:
+`runtime.whenAgent("assess").thenOutput("{\"decision\":\"accept\"}")`.
+
 ## 9. Updates of a running process
 
 Validated writes that answer with a result (unlike fire-and-forget messages).

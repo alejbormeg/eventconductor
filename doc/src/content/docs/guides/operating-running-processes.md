@@ -88,6 +88,21 @@ An iteration of a forEach that has already failed is refused ("complete or retry
 
 None of the operations applies to a finished process: `COMPLETED`, `CANCELLED` (use retry or restart, which revive what the cancel stopped), `COMPENSATED` and `COMPENSATION_FAILED`. A failed process whose **saga rollback is under way** — a compensation is about to run or is running — is refused for complete-step and retry-from-step: the rollback is undoing exactly what they would build on. Once it ends the process is `COMPENSATED` or `COMPENSATION_FAILED`, finished either way. Setting variables is allowed during a rollback; it moves no step.
 
+## AGENT invocations
+
+An [`AGENT` step](/guides/workflow-agents/)'s invocation has effects outside the engine, and only its runtime can say
+how it ended. While any invocation of the process is **under review** (`REVIEW_REQUIRED`, the process `PAUSED`),
+complete-step, retry-from-step and [migration](/guides/migrating-running-processes/) are refused (`409`): only the
+runtime's correlated reconciliation releases the hold. Resume, retry and restart wait for it too. Setting variables
+is allowed (it moves no step; the agent's request was rendered before dispatch), and updates wait because the process
+is paused.
+
+An invocation **in flight** (`PENDING`, `RUNNING`) is not completed, reset or re-dispatched by hand. Completing it,
+completing the forEach it is an iteration of, a retry-from that would reopen it, migrating and restarting are all
+refused, because its outcome would be unknown and a second invocation would run beside it. Cancel the process to
+stop it: the cancellation holds the invocation until the runtime confirms. Once an invocation has a known outcome
+(`ERROR`, `TIMEOUT`), the step is operated on like any other.
+
 ## Incidents
 
 An **incident** is a failure an operator can act on: a step execution in `ERROR` (or in a `TIMEOUT` with no on-timeout route) of a process that is `ERROR`. The **Incidents** page groups them by **workflow, step and error family**, most failures first, with how many steps and processes each group holds and when it was first and last seen.

@@ -60,3 +60,47 @@ while held or on invalid JSON.
 The updated engine and durable IA worker must be deployed together. Agent replies echo
 `invocationId`, monotonically increasing `stateSequence`, and `reviewResolved: true` only when
 reconciliation resumes a held invocation. Ordinary worker messages preserve their legacy shape.
+
+## Sensitive variables
+
+What the agent receives leaves the engine for its runtime and, through it, a model and its tools. In a definition
+that declares [sensitive variables](/guides/sensitive-data-and-encryption/), an `AGENT` step whose `taskPrompt` or
+`input` reads one is refused at load (and by the Maven plugin) unless it says `allowSensitiveVariables: true`:
+
+```yaml
+agent:
+  ref: claims-assessor
+  taskPrompt: "Assess the claim of ${patient.name}"
+  input: { history: "${patient.history}" }
+  outputVariable: assessment
+  allowSensitiveVariables: true
+```
+
+Without the opt-in, sensitive variables are also left out of the request's context, so an indirect read cannot reach
+them. With it, `__agent` is sealed in the step's row, the outbox and the `agent-calls` message, and the agent runtime
+needs the keys to open it.
+
+## forEach
+
+An `AGENT` step can declare a [`forEach`](/guides/loops-and-multi-instance/): each item is an invocation of its own,
+with its own invocation id, and its request is rendered with the iteration's `item` and `index`. Each result is
+collected into the forEach's `output` as usual.
+
+## Operating a process that waits on an agent
+
+While an invocation is under review (`REVIEW_REQUIRED`, the process `PAUSED`), completing a step by hand, retrying
+from a step and migrating are refused with `409`, as are resume, retry and restart. Only the runtime's correlated
+reconciliation releases a hold. Setting variables is allowed. While an invocation is in flight, it is not completed,
+reset, migrated or restarted by hand; cancel the process instead. See
+[Operating running processes](/guides/operating-running-processes/#agent-invocations).
+
+`GET /workflow/api/processes/{id}/steps` shows each AGENT step's `agent`: its `invocationId`, `underReview`, the
+engine's `holdReason` (`TIMEOUT`, `CANCELLED`, `END`) and the last `lastStateSequence` accepted. The MCP
+`getProcessDetails` tool shows the invocation id and hold reason of each step.
+
+## Testing
+
+The [test kit](/guides/testing-workflows/#agents) never contacts the catalogue or a runtime. Every reference is taken
+as published, and `runtime.whenAgent("assess")` scripts the runtime's answers: `thenOutput(json)`,
+`thenReviewRequired()` (released with `runtime.resolveAgentReview(process, "assess")`), `thenFail(code, message)`,
+`thenCancelled()` and `thenNoReply()`.

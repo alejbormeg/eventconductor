@@ -39,7 +39,8 @@ retries, timeouts, cancellation and compensation work exactly as they do for any
     completion: all                # all (default) | any | a JEXL condition
 ```
 
-`forEach` is allowed on **ACTION, USER_TASK, PROCESS, HTTP_CALL, LLM_CALL and RULE** steps.
+`forEach` is allowed on **ACTION, USER_TASK, PROCESS, HTTP_CALL, LLM_CALL, RULE and AGENT** steps. An AGENT runs one
+invocation of its agent per item, each with its own invocation id, its request rendered with `item` and `index`.
 
 **Items.** `items` is evaluated once, when the step starts, over the process variables. Variables
 are strings in EventConductor, so here — and only here — a variable holding a JSON array or object
