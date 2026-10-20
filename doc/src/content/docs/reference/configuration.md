@@ -8,6 +8,7 @@ description: Complete reference for all EventConductor configuration properties.
 | Property | Values | Default | Description |
 |---|---|---|---|
 | `workflow.mode` | `kafka` \| `embedded` | `embedded` | Event dispatch mode |
+| `workflow.test-runs.enabled` | boolean | `false` | Enable manual IDE test runs from embedded definitions at `POST /workflow/api/test-runs`. Calls real workers; use a test environment. Does not publish definitions or register triggers/schedules. Normal REST and flow authorization still apply |
 | `workflow.persistence` | `jpa` \| `memory` | `memory` | Workflow state persistence mode |
 | `workflow.projection.enabled` | `true` \| `false` | `false` | Turn on the [process-index read model](/guides/process-index/): emit `ProcessStatusChanged` from `ProcessRepository.save` and run the projector that maintains the `process_index` table. Off = no prior-status read, no event, no projector bean; the write path is unchanged |
 | `workflow.projection.mode` | `embedded` \| `remote` | `embedded` | Where the read model is maintained. `embedded`: in-process, in the engine's own database — unchanged. `remote`: the outbox relay diverts `ProcessStatusChanged` to the shared `process-index` topic, the in-process projector is not created, and a [standalone projector](/guides/process-index/#running-a-standalone-projector) maintains one fleet-wide index in a read database |

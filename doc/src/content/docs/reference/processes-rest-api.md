@@ -193,3 +193,39 @@ The engine then contributes the `eventconductor` group — `/v3/api-docs/eventco
 - Pausing or resuming a whole definition — the console and the `pauseWorkflow` / `resumeWorkflow` MCP tools.
 - Analytics — the console and the `getWorkflowAnalytics` / `findBottleneck` MCP tools.
 - In a sharded fleet, reading a process (`/{id}`, its steps, variables and log) answers from the shard that serves the request; a process owned by another shard is `404` there. Commands are routed (above).
+
+
+## IDE test runs and frozen execution graphs
+
+`POST /workflow/api/test-runs` accepts `{runId, definition, variables?}`: `runId` is a canonical
+UUID, `definition` is the workflow JSON object (YAML is parsed by the IDE), and `variables`
+is a JSON object. Requires `workflow.test-runs.enabled=true`; off by default, a call returns
+`404` with an explanation. Normal API authentication and flow authorization apply.
+
+A first accepted call returns `201` and a process `Location`; the same ID and payload returns
+the retained instance with `200`. A conflicting document/input or concurrent submission returns
+`409`. After an uncertain response, query the same ID or retry that exact submission. Once
+retention purges the instance, its identifier no longer provides idempotency.
+
+The definition is validated and frozen in the process; it is never saved to the definition
+catalogue. An absent definition ID is assigned `vscode-<runId>`. The persisted test marker is
+inherited by nested subprocesses and continuations. Children still resolve their deployed
+definitions normally. `same` continuations use the executed snapshot; `latest` requires and
+uses the registered definition. This is a manual start: no cron/event registration or
+startPolicy admission is performed. Workers and services have their usual, real effects.
+
+`GET /workflow/api/processes/{id}/graph` returns `{process, testRun, parentProcessId, definition,
+overlay, steps}`. `definition` is the effective graph topology from the process's snapshot plus
+injected steps, not today's catalogue definition. Request blocks, credentials, agent inputs
+and prompts are omitted; an agent's catalogue reference is retained. `process` carries the
+effective version, masked current variables and continuation links. `overlay` provides node
+states, errors, waits, retries and iteration summaries; `steps` includes historical executions
+and their exact IDs. Logs remain at the existing `/processes/{id}/logs` route.
+
+`GET /workflow/api/processes/{id}/children?page=0&size=20&stepId=sub` returns a page of direct
+child processes, ordered by creation then ID. `stepId` is optional, `size` is 1–100. Every row
+contains `parentStepExecutionId`, source `stepId`, zero-based `itemIndex` (or null), zero-based
+`iteration`, effective definition version and continuation links. The relation keeps earlier
+attempts and loop passes. It is not a recursive download. A forbidden child causes `403` for
+that page. A purged process returns `404`; continuation links may still point to purged history.
+Graph and children reads use normal process authorization even when starting tests is disabled.

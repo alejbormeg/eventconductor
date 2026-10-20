@@ -14,6 +14,18 @@ import java.util.Optional;
 
 public interface ProcessRepository extends CrudStore<Process> {
 
+    record ChildrenPage(List<Process> content, int page, int size, long totalElements) {}
+
+    /** Direct descendants only; iteration/retry identity remains on parentStepExecutionId. */
+    default ChildrenPage findChildren(String parentProcessId, java.util.Set<String> parentStepIds, String stepId, int page, int size) {
+        var children = findAll().stream().filter(process -> parentStepIds.contains(process.getParentStepExecutionId()))
+                .sorted(Comparator.comparing(Process::getCreated, Comparator.nullsFirst(Comparator.naturalOrder()))
+                        .thenComparing(Process::getId)).toList();
+        int start = (int) Math.min((long) page * size, children.size());
+        return new ChildrenPage(children.subList(start, Math.min(start + size, children.size())), page, size, children.size());
+    }
+
+
     /**
      * The process that holds this business key now — the only one, unless the definition's
      * {@code businessKeyPolicy} or a CONTINUE_AS_NEW let later runs take the key over, in which case it is

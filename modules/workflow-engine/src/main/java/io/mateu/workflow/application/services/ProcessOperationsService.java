@@ -130,6 +130,28 @@ public class ProcessOperationsService {
                 : operationsRequiredRoles.stream().filter(role -> role != null && !role.isBlank()).map(String::trim).toList();
     }
 
+    private io.mateu.workflow.application.out.ProcessSnapshotReader testRunSnapshots;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setTestRunSnapshots(io.mateu.workflow.application.out.ProcessSnapshotReader snapshots) {
+        this.testRunSnapshots = snapshots;
+    }
+
+    /** Apply the frozen test's requirements as well as any published requirements under its id. */
+    public void authorizeRead(Process process, AuthorizationContext caller) {
+        authorize(process.getWorkflowDefinitionId(), caller, "read process '" + process.getId() + "'");
+        if (!flowAuthorizationEnabled || !process.isTestRun()) return;
+        if (testRunSnapshots == null) throw new IllegalStateException("Test run snapshot reader is unavailable.");
+        var snapshot = testRunSnapshots.read(process.getWorkflowDefinitionJson());
+        var decision = FlowAuthorizationService.authorize(caller, snapshot.requiredScopes(), snapshot.requiredRoles());
+        if (!decision.allowed()) throw FlowAuthorizationDeniedException.of("read test run", caller == null ? null : caller.subject(),
+                decision.missingScopes(), decision.missingRoles());
+    }
+
+    private void authorizeExistingTest(String processId, AuthorizationContext caller) {
+        processRepository.findById(processId).filter(Process::isTestRun).ifPresent(process -> authorizeRead(process, caller));
+    }
+
     // ── Start ────────────────────────────────────────────────────────────────────────────────────
 
     /** The outcome of a start: the process, and whether this call created it or found it already there. */
@@ -272,7 +294,7 @@ public class ProcessOperationsService {
         if (!definitionId.equals(existing.getWorkflowDefinitionId())) {
             throw new BusinessKeyTakenException(existing.getBusinessKey(), existing.getWorkflowDefinitionId());
         }
-        authorize(existing.getWorkflowDefinitionId(), caller, "start workflow '" + definitionId + "'");
+        authorizeRead(existing, caller);
         return new StartOutcome(existing, false);
     }
 
@@ -282,7 +304,7 @@ public class ProcessOperationsService {
     public Process get(String processId, AuthorizationContext caller) {
         var process = processRepository.findById(processId)
                 .orElseThrow(() -> new ProcessNotFoundException("No process with id '" + processId + "'."));
-        authorize(process.getWorkflowDefinitionId(), caller, "read process '" + processId + "'");
+        authorizeRead(process, caller);
         return process;
     }
 
@@ -290,7 +312,7 @@ public class ProcessOperationsService {
     public Process getByBusinessKey(String businessKey, AuthorizationContext caller) {
         var process = processRepository.findByBusinessKey(businessKey)
                 .orElseThrow(() -> new ProcessNotFoundException("No process with business key '" + businessKey + "'."));
-        authorize(process.getWorkflowDefinitionId(), caller, "read process '" + process.getId() + "'");
+        authorizeRead(process, caller);
         return process;
     }
 
@@ -357,6 +379,7 @@ public class ProcessOperationsService {
                 .orElseThrow(() -> new ProcessNotFoundException("Process '" + processId
                         + "' has no step execution '" + stepExecutionId + "'."));
         authorize(process.workflowDefinitionId(), caller, "retry a step of process '" + processId + "'");
+        authorizeExistingTest(processId, caller);
         if (!RetryStepExecutionUseCase.retriesStepFrom(step.getStatus())) {
             throw new ProcessStateConflictException(processId, "retry step '" + stepExecutionId + "'",
                     process.status(), "the step is " + step.getStatus() + "; only ERROR or TIMEOUT steps are retried");
@@ -396,6 +419,7 @@ public class ProcessOperationsService {
         toRemove.forEach(name -> InputLimits.checkIdentifier(name, "a variable to remove"));
         var process = ref(processId);
         authorizeOperation(process.workflowDefinitionId(), caller, "change the variables of process '" + processId + "'");
+        authorizeExistingTest(processId, caller);
         var local = processRepository.findById(processId).orElse(null);
         var why = local != null ? rules.whyNotSetVariables(local) : liveOrWhy(process.status());
         if (why != null) {
@@ -421,6 +445,7 @@ public class ProcessOperationsService {
         InputLimits.checkIdentifier(stepExecutionId, "stepExecutionId");
         var process = ref(processId);
         authorizeOperation(process.workflowDefinitionId(), caller, "complete a step of process '" + processId + "'");
+        authorizeExistingTest(processId, caller);
         var local = processRepository.findById(processId).orElse(null);
         if (local != null) {
             var step = stepExecutionRepository.findById(stepExecutionId)
@@ -459,6 +484,7 @@ public class ProcessOperationsService {
         InputLimits.checkIdentifier(stepId, "stepId");
         var process = ref(processId);
         authorizeOperation(process.workflowDefinitionId(), caller, "retry process '" + processId + "' from a step");
+        authorizeExistingTest(processId, caller);
         var local = processRepository.findById(processId).orElse(null);
         if (local != null) {
             var steps = stepExecutionRepository.findByProcess(local);
@@ -505,6 +531,7 @@ public class ProcessOperationsService {
         checkMigrationInput(stepMapping, variableMapping);
         var process = ref(processId);
         authorizeOperation(process.workflowDefinitionId(), caller, "plan the migration of process '" + processId + "'");
+        authorizeExistingTest(processId, caller);
         var local = processRepository.findById(processId).orElse(null);
         if (local == null || migrationPlanner == null) {
             throw new ProcessStateConflictException(processId, "plan the migration of", process.status(),
@@ -531,6 +558,7 @@ public class ProcessOperationsService {
         checkMigrationInput(stepMapping, variableMapping);
         var process = ref(processId);
         authorizeOperation(process.workflowDefinitionId(), caller, "migrate process '" + processId + "'");
+        authorizeExistingTest(processId, caller);
         var local = processRepository.findById(processId).orElse(null);
         if (local != null && migrationPlanner != null) {
             var plan = migrationPlanner.plan(local, stepExecutionRepository.findByProcess(local), targetVersion,
@@ -613,6 +641,7 @@ public class ProcessOperationsService {
                          Function<String, DomainEvent> command, AuthorizationContext caller) {
         var process = ref(processId);
         authorize(process.workflowDefinitionId(), caller, operation + " process '" + processId + "'");
+        authorizeExistingTest(processId, caller);
         if (!accepts.test(process.status())) {
             throw new ProcessStateConflictException(processId, operation, process.status(), null);
         }

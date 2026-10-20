@@ -12,6 +12,19 @@ import java.util.Optional;
 
 public interface ProcessEntityRepository extends JpaRepository<ProcessEntity, String> {
 
+    @Query(value = """
+            select child from ProcessEntity child, StepExecutionEntity parentStep
+            where child.parentStepExecutionId = parentStep.id and parentStep.processId = :parentId
+              and (:stepId is null or parentStep.stepId = :stepId)
+            order by child.created, child.id
+            """, countQuery = """
+            select count(child) from ProcessEntity child, StepExecutionEntity parentStep
+            where child.parentStepExecutionId = parentStep.id and parentStep.processId = :parentId
+              and (:stepId is null or parentStep.stepId = :stepId)
+            """)
+    org.springframework.data.domain.Page<ProcessEntity> findDirectChildren(@Param("parentId") String parentId, @Param("stepId") String stepId, Pageable pageable);
+
+
     /** The run that holds this key now (the column is UNIQUE; a run that handed it over keeps it apart). */
     Optional<ProcessEntity> findByBusinessKey(String businessKey);
 
