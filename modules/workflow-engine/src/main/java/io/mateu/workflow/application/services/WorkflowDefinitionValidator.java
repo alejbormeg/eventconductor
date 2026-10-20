@@ -120,17 +120,27 @@ public class WorkflowDefinitionValidator {
         this.encryption = encryption == null ? io.mateu.workflow.crypto.VariableEncryption.DISABLED : encryption;
     }
 
-    public void validate(WorkflowDefinition definition) {
-        definition.checkInvariants();
-        requireKeysFor(definition, encryption);
+    /**
+     * Every AGENT step names an agent the catalogue publishes, with capabilities it allows — checked wherever a
+     * definition is stored (the JPA repository through {@link #validate}, the classpath repository of memory
+     * mode as it loads and saves). No catalogue configured and an AGENT step: refused.
+     */
+    public static void requirePublishedAgents(WorkflowDefinition definition,
+                                              io.mateu.workflow.application.out.WorkflowAgentCatalogue agentCatalogue) {
         if (definition.steps() != null) definition.steps().stream()
-                .filter(step -> step.type() == io.mateu.workflow.domain.aggregates.StepType.AGENT)
+                .filter(step -> step != null && step.type() == io.mateu.workflow.domain.aggregates.StepType.AGENT)
                 .forEach(step -> {
                     if (agentCatalogue == null) throw new WorkflowDefinitionValidationException("Workflow agent catalogue is not configured");
                     try { agentCatalogue.validate(step.agent()); }
                     catch (RuntimeException failure) { throw new WorkflowDefinitionValidationException(
                             "Invalid AGENT step '" + step.id() + "': " + failure.getMessage(), failure); }
                 });
+    }
+
+    public void validate(WorkflowDefinition definition) {
+        definition.checkInvariants();
+        requireKeysFor(definition, encryption);
+        requirePublishedAgents(definition, agentCatalogue);
         // Non-fatal guidance toward the FORK/JOIN gateway model (compensation-aware).
         definition.topologyWarnings().forEach(w ->
                 log.warn("Workflow definition '{}': {}", definition.name(), w));

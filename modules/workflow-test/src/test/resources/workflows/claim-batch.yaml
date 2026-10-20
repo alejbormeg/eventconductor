@@ -1,0 +1,15 @@
+id: claim-batch
+name: Assess every claim of a batch with a published agent
+version: 1
+steps:
+  - { id: start, type: START, name: Start }
+  - id: assess
+    type: AGENT
+    name: Assess a claim
+    preconditionStepId: start
+    forEach: {items: claims, as: claim, output: assessments, outputElement: assessment}
+    agent:
+      ref: claims-assessor
+      taskPrompt: "Assess claim ${claim}"
+      outputVariable: assessment
+  - { id: end, type: END, name: End, preconditionStepId: assess }

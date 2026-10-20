@@ -22,8 +22,9 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * answered, in this order of precedence:
  *
  * <ol>
- *   <li>an {@code HTTP_CALL} / {@code LLM_CALL} step — by its {@link HttpStub} / {@link LlmStub}, or
- *       failed (finally) when it has none: a test never reaches the network;</li>
+ *   <li>an {@code HTTP_CALL} / {@code LLM_CALL} / {@code AGENT} step — by its {@link HttpStub} /
+ *       {@link LlmStub} / {@link AgentStub}, or failed (finally) when it has none: a test never reaches the
+ *       network, a model or an agent runtime;</li>
  *   <li>a {@link TaskStub} for the step id ({@code whenStep}), then ({@code whenTask}) for the task id
  *       without its version — the step id when the step names no task, as the worker SDK resolves
  *       handlers — then for the step's topic;</li>
@@ -48,6 +49,10 @@ final class StubbingTaskExecutor implements EmbeddedTaskExecutor {
     private final Map<String, TaskStub> taskStubs = new ConcurrentHashMap<>();
     private final Map<String, HttpStub> httpStubs = new ConcurrentHashMap<>();
     private final Map<String, LlmStub> llmStubs = new ConcurrentHashMap<>();
+    private final Map<String, AgentStub> agentStubs = new ConcurrentHashMap<>();
+    // AGENT invocations the runtime put under review, by step execution id, and the state sequence of each.
+    private final Map<String, TaskExecutionRequested> underReview = java.util.Collections.synchronizedMap(new LinkedHashMap<>());
+    private final Map<String, java.util.concurrent.atomic.AtomicLong> agentSequences = new ConcurrentHashMap<>();
     private final List<TaskInvocation> invocations = new CopyOnWriteArrayList<>();
     private final Map<String, Integer> counts = new ConcurrentHashMap<>();
     // By step execution id, in dispatch order: a multi-instance step parks one task per instance.
@@ -70,6 +75,9 @@ final class StubbingTaskExecutor implements EmbeddedTaskExecutor {
         taskStubs.clear();
         httpStubs.clear();
         llmStubs.clear();
+        agentStubs.clear();
+        underReview.clear();
+        agentSequences.clear();
         invocations.clear();
         counts.clear();
         parked.clear();
@@ -90,6 +98,10 @@ final class StubbingTaskExecutor implements EmbeddedTaskExecutor {
 
     LlmStub llmStub(String stepId) {
         return llmStubs.computeIfAbsent(stepId, LlmStub::new);
+    }
+
+    AgentStub agentStub(String stepId) {
+        return agentStubs.computeIfAbsent(stepId, AgentStub::new);
     }
 
     List<TaskInvocation> invocations() {
@@ -135,6 +147,11 @@ final class StubbingTaskExecutor implements EmbeddedTaskExecutor {
             outcome = builtIn(request, invocation, httpStubs.get(request.stepId()) == null ? null
                     : () -> httpStubs.get(request.stepId()).answer(Values.tree(invocation.variable("__http"))), "HTTP_CALL",
                     "whenHttpCall");
+        } else if ("run-agent".equals(base) && agentStubs.containsKey(request.stepId())) {
+            answerAgent(request, agentStubs.get(request.stepId()).invoked(Values.tree(invocation.variable("__agent"))), false);
+            return;
+        } else if ("run-agent".equals(base)) {
+            outcome = builtIn(request, invocation, null, "AGENT", "whenAgent");
         } else if ("llm-call".equals(base)) {
             outcome = builtIn(request, invocation, llmStubs.get(request.stepId()) == null ? null
                     : () -> llmStubs.get(request.stepId()).answer(Values.tree(invocation.variable("__llm"))), "LLM_CALL",
@@ -172,15 +189,76 @@ final class StubbingTaskExecutor implements EmbeddedTaskExecutor {
     }
 
     void reply(TaskExecutionRequested request, TaskOutcome outcome) {
+        // The attempt and an AGENT task's invocation are echoed, as WorkerReply does: the engine drops an
+        // agent reply that does not name its invocation.
         switch (outcome) {
             case TaskOutcome.Complete complete -> updateStepExecution.getObject().handle(new UpdateStepExecutionCommand(
                     request.taskExecutionId(), Values.domainVariables(complete.variables()), "",
-                    StepExecutionStatus.COMPLETED, false, request.attempt()));
+                    StepExecutionStatus.COMPLETED, false, request.attempt(), request.invocationId(), false, null));
             case TaskOutcome.Fail fail -> updateStepExecution.getObject().handle(new UpdateStepExecutionCommand(
                     request.taskExecutionId(), List.of(), fail.reason(), StepExecutionStatus.ERROR, false,
-                    request.attempt()));
+                    request.attempt(), request.invocationId(), false, null));
             case TaskOutcome.NoReply ignored -> parked.put(request.taskExecutionId(), request);
         }
+    }
+
+    /**
+     * The runtime's answer to an AGENT invocation — {@code resolving} a review, or the first answer. Each reply
+     * carries the invocation id and a state sequence one past the previous, as the agent runtime's do.
+     */
+    void answerAgent(TaskExecutionRequested request, AgentStub.Answer answer, boolean resolving) {
+        var update = updateStepExecution.getObject();
+        var sequence = agentSequences.computeIfAbsent(request.taskExecutionId(), id -> new java.util.concurrent.atomic.AtomicLong());
+        java.util.function.BiConsumer<StepExecutionStatus, List<io.mateu.workflow.domain.aggregates.Variable>> send =
+                (status, variables) -> update.handle(new UpdateStepExecutionCommand(request.taskExecutionId(), variables,
+                        "", status, false, request.attempt(), request.invocationId(), resolving, sequence.incrementAndGet()));
+        if (resolving && !(answer instanceof AgentStub.ReviewRequired)) {
+            // A review the runtime asked for resumes with RUNNING (a hold after a cancel or a timeout ignores it
+            // and waits for the outcome below).
+            send.accept(StepExecutionStatus.RUNNING, List.of());
+        }
+        switch (answer) {
+            case AgentStub.Output output -> {
+                var outputVariable = Values.tree(variableOf(request, "__agent")).path("outputVariable").asText("");
+                send.accept(StepExecutionStatus.COMPLETED,
+                        List.of(new io.mateu.workflow.domain.aggregates.Variable(outputVariable, output.json())));
+            }
+            case AgentStub.Failure failure -> {
+                var reason = failure.message() == null ? failure.code() : failure.code() + ": " + failure.message();
+                update.handle(new UpdateStepExecutionCommand(request.taskExecutionId(), List.of(),
+                        io.mateu.workflow.worker.FailureMarkers.nonRetryable(reason), StepExecutionStatus.ERROR, true,
+                        request.attempt(), request.invocationId(), resolving, sequence.incrementAndGet()));
+            }
+            case AgentStub.ReviewRequired ignored -> {
+                underReview.put(request.taskExecutionId(), request);
+                send.accept(StepExecutionStatus.REVIEW_REQUIRED, List.of());
+            }
+            case AgentStub.Cancelled ignored -> send.accept(StepExecutionStatus.CANCELLED, List.of());
+            case AgentStub.NoReply ignored -> parked.put(request.taskExecutionId(), request);
+        }
+    }
+
+    /**
+     * The held AGENT invocation of {@code stepId} in {@code processId} — put under review by the runtime, or
+     * left without an answer and then held by the engine (a timeout, a cancel) — removed; null when none is.
+     */
+    TaskExecutionRequested unholdAgent(String processId, String stepId) {
+        synchronized (underReview) {
+            var found = underReview.values().stream()
+                    .filter(request -> processId.equals(request.processId()) && stepId.equals(request.stepId()))
+                    .findFirst().orElse(null);
+            if (found != null) {
+                underReview.remove(found.taskExecutionId());
+                return found;
+            }
+        }
+        return unpark(processId, stepId);
+    }
+
+    private static String variableOf(TaskExecutionRequested request, String name) {
+        return request.variables() == null ? null : request.variables().stream()
+                .filter(variable -> name.equals(variable.name())).map(io.mateu.workflow.dtos.Variable::value)
+                .findFirst().orElse(null);
     }
 
     private TaskStub stubFor(TaskExecutionRequested request, String base, String topic) {

@@ -45,13 +45,33 @@ public class ClasspathWorkflowDefinitionRepository implements WorkflowDefinition
     }
 
     /** With the engine's encryption, which a definition declaring sensitive variables needs as it loads. */
-    @org.springframework.beans.factory.annotation.Autowired
     public ClasspathWorkflowDefinitionRepository(
             io.mateu.workflow.application.services.TaskReferenceResolver taskReferenceResolver,
             io.mateu.workflow.crypto.VariableEncryption encryption) {
+        this(taskReferenceResolver, encryption, null);
+    }
+
+    /**
+     * With the agent catalogue too, which an AGENT step's reference is checked against as it loads (as the JPA
+     * repository checks it on import): a definition naming an agent it does not publish is refused (logged,
+     * skipped).
+     */
+    @org.springframework.beans.factory.annotation.Autowired
+    public ClasspathWorkflowDefinitionRepository(
+            io.mateu.workflow.application.services.TaskReferenceResolver taskReferenceResolver,
+            io.mateu.workflow.crypto.VariableEncryption encryption,
+            org.springframework.beans.factory.ObjectProvider<io.mateu.workflow.application.out.WorkflowAgentCatalogue> agentCatalogue) {
         this.taskReferenceResolver = taskReferenceResolver;
         this.encryption = encryption == null ? io.mateu.workflow.crypto.VariableEncryption.DISABLED : encryption;
+        this.agentCatalogue = agentCatalogue;
         loadFromClasspath();
+    }
+
+    private final org.springframework.beans.factory.ObjectProvider<io.mateu.workflow.application.out.WorkflowAgentCatalogue> agentCatalogue;
+
+    private void requirePublishedAgents(WorkflowDefinition def) {
+        io.mateu.workflow.application.services.WorkflowDefinitionValidator.requirePublishedAgents(def,
+                agentCatalogue == null ? null : agentCatalogue.getIfAvailable());
     }
 
     private static final ObjectMapper YAML_MAPPER = new YAMLMapper();
@@ -127,6 +147,7 @@ public class ClasspathWorkflowDefinitionRepository implements WorkflowDefinition
                     }
                     def = taskReferenceResolver.resolve(def);
                     io.mateu.workflow.application.services.WorkflowDefinitionValidator.requireKeysFor(def, encryption);
+                    requirePublishedAgents(def);
                     definitions.put(def.id(), def);
                     log.info("Loaded workflow definition '{}' from classpath:{}", def.id(), resource.getFilename());
                 } catch (Exception e) {
@@ -146,6 +167,7 @@ public class ClasspathWorkflowDefinitionRepository implements WorkflowDefinition
     @Override
     public String save(WorkflowDefinition def) {
         io.mateu.workflow.application.services.WorkflowDefinitionValidator.requireKeysFor(def, encryption);
+        requirePublishedAgents(def);
         definitions.put(def.id(), def);
         triggerCleanup().definitionSaved(def);
         return def.id();

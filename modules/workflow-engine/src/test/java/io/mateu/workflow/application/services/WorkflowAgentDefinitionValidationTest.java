@@ -36,4 +36,28 @@ class WorkflowAgentDefinitionValidationTest {
         step.put("retries", 1);
         assertThatThrownBy(() -> validator.validateSource(source, "synthetic.ec")).hasMessageContaining("retries");
     }
+
+    @Test void memoryModeChecksTheReferenceAgainstTheCatalogueAsTheJpaImportDoes() throws Exception {
+        var parsed = io.mateu.core.infra.JsonSerializer.pojoFromJson(
+                definition.replaceFirst("\\{", "{\"id\":\"synthetic\","),
+                io.mateu.workflow.domain.aggregates.WorkflowDefinition.class);
+        var noCatalogue = new io.mateu.workflow.infra.out.classpath.ClasspathWorkflowDefinitionRepository(
+                new TaskReferenceResolver(new io.mateu.workflow.infra.out.classpath.ClasspathTaskContractRepository()));
+        assertThatThrownBy(() -> noCatalogue.save(parsed)).hasMessageContaining("catalogue is not configured");
+
+        io.mateu.workflow.application.out.WorkflowAgentCatalogue catalogue = () -> java.util.List.of(
+                new io.mateu.workflow.application.out.WorkflowAgentCatalogue.Agent("other", "Other", null,
+                        java.util.List.of(), null, null, java.util.Map.of("type", "object"), "r1"));
+        var beans = new org.springframework.beans.factory.support.StaticListableBeanFactory();
+        beans.addBean("catalogue", catalogue);
+        var withCatalogue = new io.mateu.workflow.infra.out.classpath.ClasspathWorkflowDefinitionRepository(
+                new TaskReferenceResolver(new io.mateu.workflow.infra.out.classpath.ClasspathTaskContractRepository()), null,
+                beans.getBeanProvider(io.mateu.workflow.application.out.WorkflowAgentCatalogue.class));
+        assertThatThrownBy(() -> withCatalogue.save(parsed)).hasMessageContaining("Invalid AGENT step 'assess'")
+                .hasMessageContaining("Unknown published workflow agent: synthetic");
+        assertThat(withCatalogue.save(parsed.withSteps(parsed.steps().stream()
+                .map(step -> step.agent() == null ? step : step.withAgent(new io.mateu.workflow.domain.aggregates.AgentCall(
+                        "other", null, null, null, null, null, "assessment"))).toList())))
+                .isEqualTo("synthetic");
+    }
 }

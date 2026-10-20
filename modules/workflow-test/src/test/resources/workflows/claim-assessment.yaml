@@ -1,0 +1,15 @@
+id: claim-assessment
+name: Assess claims with a published agent
+version: 1
+steps:
+  - { id: start, type: START, name: Start }
+  - id: assess
+    type: AGENT
+    name: Assess the claim
+    preconditionStepId: start
+    agent:
+      ref: claims-assessor
+      taskPrompt: "Assess claim ${claimId}"
+      input: {claimId: "${claimId}"}
+      outputVariable: assessment
+  - { id: end, type: END, name: End, preconditionStepId: assess }
