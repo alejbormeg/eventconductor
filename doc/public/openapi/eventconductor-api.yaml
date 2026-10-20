@@ -2179,6 +2179,36 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ActivatedTask"
+    AgentInvocation:
+      type: object
+      description: "The invocation of a published agent by an AGENT step execution.\
+        \ Never its request or result: those are the process's variables."
+      properties:
+        holdReason:
+          type:
+          - string
+          - "null"
+          description: "Why the engine held it: TIMEOUT (its timeout passed), CANCELLED\
+            \ (the process was cancelled), END (an END transition cancelled it while\
+            \ in flight); null when the runtime asked for the review, or there is\
+            \ no hold."
+        invocationId:
+          type: string
+          description: The invocation id the agent runtime correlates every reply
+            and cancellation with. Stable across redeliveries; a restart of the process
+            starts a new one.
+        lastStateSequence:
+          type:
+          - integer
+          - "null"
+          format: int64
+          description: "The last state sequence accepted from the runtime: older or\
+            \ repeated replies are ignored."
+        underReview:
+          type: boolean
+          description: "True while the invocation is held for review (the step is\
+            \ REVIEW_REQUIRED and the process PAUSED): only the runtime's correlated\
+            \ reconciliation releases it."
     BatchOperationFilter:
       type: object
       properties:
@@ -3105,6 +3135,10 @@ components:
       type: object
       description: One step execution of a process.
       properties:
+        agent:
+          $ref: "#/components/schemas/AgentInvocation"
+          description: "For an AGENT step, its invocation of the published agent;\
+            \ null for every other step."
         attemptCount:
           type: integer
           format: int32
@@ -3147,7 +3181,8 @@ components:
           type: string
         status:
           type: string
-          description: "CREATED, PENDING, WAITING_ON_LOCK, RUNNING, AWAITING_RETRY,\
+          description: "CREATED, PENDING, WAITING_ON_LOCK, RUNNING, REVIEW_REQUIRED\
+            \ (an AGENT invocation held for review; its process is PAUSED), AWAITING_RETRY,\
             \ COMPLETED, ERROR, TIMEOUT or CANCELLED."
         stepId:
           type: string

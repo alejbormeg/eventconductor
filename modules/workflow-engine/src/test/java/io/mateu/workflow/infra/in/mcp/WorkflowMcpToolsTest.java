@@ -187,6 +187,21 @@ class WorkflowMcpToolsTest {
     }
 
     @Test
+    void anAgentStepCarriesItsInvocationAndWhyItIsHeld() {
+        var process = process("p-1", "bk-1", List.of());
+        when(processes.findById("p-1")).thenReturn(Optional.of(process));
+        when(steps.findByProcess(process)).thenReturn(List.of(
+                StepExecution.builder().id("se-1").stepId("assess").status(StepExecutionStatus.REVIEW_REQUIRED)
+                        .invocationId("inv-1").agentHoldReason("CANCELLED").build()));
+
+        assertThat(tools.getProcessDetails("p-1").steps()).singleElement().satisfies(step -> {
+            assertThat(step.status()).isEqualTo("REVIEW_REQUIRED");
+            assertThat(step.agentInvocationId()).isEqualTo("inv-1");
+            assertThat(step.agentHoldReason()).isEqualTo("CANCELLED");
+        });
+    }
+
+    @Test
     void aProcessWithoutVariablesHasAnEmptyList() {
         var process = process("p-1", "bk-1", null);
         when(processes.findById("p-1")).thenReturn(Optional.of(process));

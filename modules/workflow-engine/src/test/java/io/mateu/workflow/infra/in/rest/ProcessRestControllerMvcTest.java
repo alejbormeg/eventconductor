@@ -275,6 +275,25 @@ class ProcessRestControllerMvcTest {
     }
 
     @Test
+    void anAgentStepShowsItsInvocationAndWhetherItIsUnderReview() throws Exception {
+        processes.save(process("p-a", "claims", "CLAIM-1", ProcessStatus.PAUSED,
+                LocalDateTime.of(2026, 10, 18, 9, 30), List.of()));
+        when(steps.findByProcessId("p-a")).thenReturn(List.of(
+                step("s-1", "p-a", "start", StepExecutionStatus.COMPLETED, 1),
+                step("s-2", "p-a", "assess", StepExecutionStatus.REVIEW_REQUIRED, 2).toBuilder()
+                        .invocationId("inv-1").agentHoldReason("TIMEOUT").lastAgentStateSequence(7L).build()));
+
+        mvc.perform(get("/workflow/api/processes/p-a/steps"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].agent").doesNotExist())
+                .andExpect(jsonPath("$[1].status").value("REVIEW_REQUIRED"))
+                .andExpect(jsonPath("$[1].agent.invocationId").value("inv-1"))
+                .andExpect(jsonPath("$[1].agent.underReview").value(true))
+                .andExpect(jsonPath("$[1].agent.holdReason").value("TIMEOUT"))
+                .andExpect(jsonPath("$[1].agent.lastStateSequence").value(7));
+    }
+
+    @Test
     void anUnknownProcessIsNotFoundEverywhere() throws Exception {
         for (var path : List.of("/workflow/api/processes/nope", "/workflow/api/processes/nope/steps",
                 "/workflow/api/processes/nope/variables", "/workflow/api/processes/nope/logs")) {
