@@ -52,4 +52,20 @@ class UpdateStepExecutionSinkTest {
         assertThat(command.status()).isEqualTo(StepExecutionStatus.ERROR);
         assertThat(command.log()).isEqualTo("OUT_OF_STOCK");
     }
+
+    @Test
+    void every_reply_to_an_agent_task_echoes_its_attempt_and_invocation() {
+        var agent = new TaskExecutionRequested("tx-2", "p-1", "wf", "assess", "run-agent@1", List.of(), 3, null, "inv-1");
+        var other = mock(UpdateStepExecutionUseCase.class);
+        var agentSink = new UpdateStepExecutionSink(other);
+        agentSink.running(agent);
+        agentSink.completed(agent, List.of());
+        agentSink.failed(agent, List.of(), "AGENT_FAILED");
+        var captor = ArgumentCaptor.forClass(UpdateStepExecutionCommand.class);
+        verify(other, org.mockito.Mockito.times(3)).handle(captor.capture());
+        assertThat(captor.getAllValues()).allSatisfy(command -> {
+            assertThat(command.attempt()).isEqualTo(3);
+            assertThat(command.invocationId()).isEqualTo("inv-1");
+        });
+    }
 }

@@ -159,6 +159,30 @@ public class MigrateProcessUseCaseTest {
     // ── the use case ─────────────────────────────────────────────────────────────────────────────
 
     @Test
+    void anAgentInvocationUnderReviewOrInFlightRefusesTheMigration() {
+        var agentStep = step("b", "AGENT", "a", "agent", Map.of("ref", "claims-assessor", "outputVariable", "o"));
+        var steps = List.of(step("start", "START", null), step("a", "ACTION", "start", "topic", "work"), agentStep,
+                step("end", "END", "b"));
+        var v1 = definition(1, steps);
+        var process = process(ProcessStatus.PAUSED, v1);
+        when(definitions.findById("w")).thenReturn(Optional.of(definition(2, steps)));
+        for (var status : List.of(StepExecutionStatus.REVIEW_REQUIRED, StepExecutionStatus.RUNNING)) {
+            var b = execution(agentStep, status, 3).toBuilder().invocationId("inv-1").build();
+            var executions = List.of(execution(steps.get(0), StepExecutionStatus.COMPLETED, 1),
+                    execution(steps.get(1), StepExecutionStatus.COMPLETED, 2), b,
+                    execution(steps.get(3), StepExecutionStatus.CREATED, 4));
+
+            var plan = planner.plan(process, executions, null, Map.of(), Map.of()).plan();
+
+            assertThat(plan.problems()).anySatisfy(problem -> {
+                assertThat(problem.severity()).isEqualTo(io.mateu.workflow.analysis.MigrationRules.Severity.ERROR);
+                assertThat(problem.stepId()).isEqualTo("b");
+                assertThat(problem.message()).contains(status == StepExecutionStatus.RUNNING ? "in flight" : "under review");
+            });
+        }
+    }
+
+    @Test
     void remapsKeepsTheTaskAddsAndDropsThenStepsOverAndRecords() {
         process(ProcessStatus.RUNNING, definition(1, v1()));
         var a = execution(v1().get(1), StepExecutionStatus.COMPLETED, 2);

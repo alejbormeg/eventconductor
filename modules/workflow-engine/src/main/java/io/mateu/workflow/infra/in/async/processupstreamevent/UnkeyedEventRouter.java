@@ -66,7 +66,7 @@ public class UnkeyedEventRouter {
                 event.taskExecutionId(), processId);
         upstreamEventPublisher.publish(new TaskStatusChanged(
                 event.taskExecutionId(), event.status(), event.variables(), processId,
-                event.nonRetryable(), event.attempt()));
+                event.nonRetryable(), event.attempt(), event.invocationId(), event.reviewResolved(), event.stateSequence()));
         return true;
     }
 

@@ -59,6 +59,8 @@ public class RetryStepExecutionUseCase {
         }
 
         var process = processRepository.findById(stepExecution.getProcessId()).orElseThrow();
+        if (stepExecutionRepository.findByProcess(process).stream().anyMatch(step ->
+                step.getStatus() == StepExecutionStatus.REVIEW_REQUIRED)) return;
         if (!retriesStepOfProcessIn(process.getStatus())) {
             // Retrying a step must not revive a finished process: a cancelled one's other steps
             // are already CANCELLED and will never run, a rolled-back saga (COMPENSATED, or

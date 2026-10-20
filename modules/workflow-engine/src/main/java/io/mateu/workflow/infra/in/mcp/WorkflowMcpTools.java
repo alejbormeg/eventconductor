@@ -94,12 +94,24 @@ public class WorkflowMcpTools implements McpTools, McpSystemContext {
      * earlier ones {@code superseded}); a forEach iteration names its container
      * ({@code parentExecutionId}) and its position ({@code itemIndex}).
      */
+    /**
+     * @param agentInvocationId AGENT steps: the invocation of the published agent; null for every other step
+     * @param agentHoldReason   AGENT steps held for review (status REVIEW_REQUIRED): TIMEOUT, CANCELLED or END when
+     *                          the engine held it, null when the agent runtime asked for the review
+     */
     public record StepSummary(
             String id, String stepId, String status, String workerId, String startedAt,
-            int iteration, boolean superseded, String parentExecutionId, Integer itemIndex) {
+            int iteration, boolean superseded, String parentExecutionId, Integer itemIndex,
+            String agentInvocationId, String agentHoldReason) {
 
         public StepSummary(String id, String stepId, String status, String workerId, String startedAt) {
             this(id, stepId, status, workerId, startedAt, 0, false, null, null);
+        }
+
+        /** The shape before AGENT steps: no invocation. */
+        public StepSummary(String id, String stepId, String status, String workerId, String startedAt,
+                           int iteration, boolean superseded, String parentExecutionId, Integer itemIndex) {
+            this(id, stepId, status, workerId, startedAt, iteration, superseded, parentExecutionId, itemIndex, null, null);
         }
     }
 
@@ -196,7 +208,8 @@ public class WorkflowMcpTools implements McpTools, McpSystemContext {
                         s.getId(), s.getStepId(), s.getStatus().name(),
                         s.getWorkerId(),
                         s.getStartedAt() != null ? s.getStartedAt().toString() : null,
-                        s.getIteration(), s.isSuperseded(), s.getParentExecutionId(), s.getItemIndex()))
+                        s.getIteration(), s.isSuperseded(), s.getParentExecutionId(), s.getItemIndex(),
+                        s.getInvocationId(), s.getAgentHoldReason()))
                 .toList();
         // A sensitive variable's value reads as the mask: revealing it is revealProcessVariable, audited.
         var vars = io.mateu.workflow.application.services.SensitiveVariableMasking.variables(process).stream()

@@ -60,11 +60,10 @@ public class RuleTaskKafkaConsumerConfig {
     @Bean
     public java.util.function.Consumer<DomainEvent> consumeWorkerEventForRuleRuntime() {
         return event -> {
-            if (event instanceof TaskExecutionRequested(
-                    String taskExecutionId, String processId, String workflowDefinitionId, String stepId,
-                    String taskId, List<Variable> variables, Integer attempt, Integer priority)
-                    && EVALUATE_RULE_TASK_ID.equals(taskId)) {
-                evaluate(taskExecutionId, processId, variables, attempt);
+            // A type pattern, not a record pattern: the shared DTOs gain components over time (attempt,
+            // priority, invocationId), and a deconstruction would stop compiling at every one.
+            if (event instanceof TaskExecutionRequested task && EVALUATE_RULE_TASK_ID.equals(task.taskId())) {
+                evaluate(task.taskExecutionId(), task.processId(), task.variables(), task.attempt());
             }
         };
     }

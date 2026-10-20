@@ -59,6 +59,10 @@ public class ResumeProcessUseCase {
 
     private void doHandle(ResumeProcessCommand command) {
         var process = processRepository.findById(command.processId()).orElseThrow();
+        if (stepExecutionRepository.findByProcess(process).stream().anyMatch(step ->
+                step.getStatus() == io.mateu.workflow.domain.aggregates.StepExecutionStatus.REVIEW_REQUIRED)) {
+            throw new IllegalStateException("Reconcile the agent invocation before resuming");
+        }
         if (!acceptsFrom(process.getStatus())) {
             log.warn("Process {} cannot be resumed from status {} — ignoring",
                     process.getId(), process.getStatus());

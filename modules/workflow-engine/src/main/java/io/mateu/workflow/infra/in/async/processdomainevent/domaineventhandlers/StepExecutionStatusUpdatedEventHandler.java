@@ -58,6 +58,20 @@ public class StepExecutionStatusUpdatedEventHandler implements DomainEventHandle
     @Override
     public void handle(StepExecutionStatusChanged e) {
         var stepExecution = stepExecutionRepository.findById(e.stepExecutionId()).orElseThrow();
+        if (stepExecution.getInvocationId() != null && (!java.util.Objects.equals(e.invocationId(), stepExecution.getInvocationId())
+                || !e.status().name().equals(stepExecution.getStatus().name()))) return;
+        if (TaskStatus.REVIEW_REQUIRED.equals(e.status())) {
+            var process = processRepository.findById(stepExecution.getProcessId()).orElseThrow();
+            processRepository.save(process.withStatus(ProcessStatus.PAUSED).withPausedAt(io.mateu.workflow.time.EngineClock.now()));
+            if (stepExecution.getAgentHoldReason() != null)
+                downstreamEventPublisher.publish(new TaskCancellationRequested(stepExecution.id(), stepExecution.getInvocationId()),
+                        stepExecution.topic());
+            return;
+        }
+        // A parallel branch can report failure while an agent is under review. Hold the entire
+        // saga before spending retries or starting compensations in any branch.
+        if (stepExecutionRepository.findByProcessId(stepExecution.getProcessId()).stream()
+                .anyMatch(step -> step.getStatus() == StepExecutionStatus.REVIEW_REQUIRED)) return;
 
         if (TaskStatus.ERROR.equals(e.status()) || TaskStatus.TIMEOUT.equals(e.status())) {
             // The event says what the step was when it was emitted; only the step's status NOW says
@@ -74,7 +88,7 @@ public class StepExecutionStatusUpdatedEventHandler implements DomainEventHandle
             // the step has moved on: the cancellation is keyed by the step execution, so on a stale
             // event it would reach the retry's worker, not the one that timed out.
             if (TaskStatus.TIMEOUT.equals(e.status()) && (stillFailed || awaitingRetry)) {
-                downstreamEventPublisher.publish(new TaskCancellationRequested(e.stepExecutionId()),
+                downstreamEventPublisher.publish(new TaskCancellationRequested(e.stepExecutionId(), stepExecution.getInvocationId()),
                         stepExecution.topic());
             }
             if (awaitingRetry) {
@@ -107,6 +121,16 @@ public class StepExecutionStatusUpdatedEventHandler implements DomainEventHandle
         var processId = stepExecution.getProcessId();
         var process = processRepository.findById(processId).orElseThrow();
         var executions = stepExecutionRepository.findByProcess(process);
+
+        // A failure in a parallel branch was held, including its retry decision, while an
+        // agent needed review. Resume that decision before considering saga compensation.
+        if (e.invocationId() != null && (e.status() == TaskStatus.RUNNING || e.status() == TaskStatus.COMPLETED)) {
+            for (var deferred : executions) {
+                if (autoRetryService.parkForRetryIfAttemptsLeft(deferred, deferred.isFailureNonRetryable())) {
+                    stepExecutionRepository.save(deferred);
+                }
+            }
+        }
 
         processUpdateStepExecutionUpdateUseCase.handle(new ProcessStepExecutionUpdateCommand(processId), executions);
         // Drive saga rollback before stepping the process over: a failed process starts (or
@@ -261,7 +285,7 @@ public class StepExecutionStatusUpdatedEventHandler implements DomainEventHandle
         for (var execution : executions) {
             if (CANCELLABLE_AT_THE_END.contains(execution.getStatus())) {
                 if (execution.getStatus().isInFlightAtAWorker()) {
-                    downstreamEventPublisher.publish(new TaskCancellationRequested(execution.getId()),
+                    downstreamEventPublisher.publish(new TaskCancellationRequested(execution.getId(), execution.getInvocationId()),
                             execution.topic());
                 }
                 execution.updateStatus(StepExecutionStatus.CANCELLED);

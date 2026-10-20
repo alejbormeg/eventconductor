@@ -11,7 +11,9 @@ import java.util.List;
  * Answers the in-process engine by calling {@link UpdateStepExecutionUseCase} directly — the
  * embedded counterpart of the Kafka worker's reply over the {@code upstream} topic. The step is
  * keyed by {@code taskExecutionId} (the engine's step-execution id), the reason rides the command's
- * log so a failure leaves a trace, and the worker-api {@code Variable}s are turned into the domain's.
+ * log so a failure leaves a trace, and the worker-api {@code Variable}s are turned into the domain's. The
+ * attempt and, for an AGENT step's {@code run-agent@1}, the invocation id are echoed back, as
+ * {@code WorkerReply} does over Kafka: the engine drops an agent reply that does not name its invocation.
  *
  * <p>Wrapped by the runtime's transaction-aware sink, so when the engine runs the task inside a
  * transaction the callback lands in {@code afterCommit}; in memory mode there is no transaction and
@@ -28,13 +30,15 @@ final class UpdateStepExecutionSink implements io.mateu.workflow.worker.api.Task
     @Override
     public void running(TaskExecutionRequested task) {
         updateStepExecution.handle(new UpdateStepExecutionCommand(
-                task.taskExecutionId(), List.of(), "", StepExecutionStatus.RUNNING, false, task.attempt()));
+                task.taskExecutionId(), List.of(), "", StepExecutionStatus.RUNNING, false, task.attempt(),
+                task.invocationId(), false, null));
     }
 
     @Override
     public void completed(TaskExecutionRequested task, List<io.mateu.workflow.dtos.Variable> variables) {
         updateStepExecution.handle(new UpdateStepExecutionCommand(
-                task.taskExecutionId(), toDomain(variables), "", StepExecutionStatus.COMPLETED, false, task.attempt()));
+                task.taskExecutionId(), toDomain(variables), "", StepExecutionStatus.COMPLETED, false, task.attempt(),
+                task.invocationId(), false, null));
     }
 
     @Override
@@ -42,7 +46,7 @@ final class UpdateStepExecutionSink implements io.mateu.workflow.worker.api.Task
                        String reason) {
         updateStepExecution.handle(new UpdateStepExecutionCommand(
                 task.taskExecutionId(), toDomain(variables), reason == null ? "" : reason,
-                StepExecutionStatus.ERROR, false, task.attempt()));
+                StepExecutionStatus.ERROR, false, task.attempt(), task.invocationId(), false, null));
     }
 
     private static List<Variable> toDomain(List<io.mateu.workflow.dtos.Variable> variables) {

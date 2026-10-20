@@ -529,6 +529,7 @@ public class SimpleProcessViewModel implements TriggersSupplier, VisibilitySuppl
     /** Overlay state token understood by the graph component. */
     static String overlayState(StepExecutionStatus status) {
         return switch (status) {
+            case REVIEW_REQUIRED -> "REVIEW_REQUIRED";
             case RUNNING -> "RUNNING";
             case COMPLETED -> "COMPLETED";
             case ERROR -> "ERROR";
@@ -548,6 +549,7 @@ public class SimpleProcessViewModel implements TriggersSupplier, VisibilitySuppl
     /** How "telling" a status is when several executions exist for one step (retries). */
     static int statusRank(StepExecutionStatus status) {
         return switch (status) {
+            case REVIEW_REQUIRED -> 6;
             case ERROR, TIMEOUT -> 5;
             case RUNNING -> 4;
             // A pending retry outranks a plain pending: it is the more telling of the two when a
@@ -675,6 +677,7 @@ public class SimpleProcessViewModel implements TriggersSupplier, VisibilitySuppl
     static String reasonFor(StepExecution se, io.mateu.workflow.domain.aggregates.Step step, String error) {
         var type = step != null ? step.type() : null;
         return switch (se.getStatus()) {
+            case REVIEW_REQUIRED -> "Agent invocation requires reconciliation before the process can resume";
             case RUNNING -> "Running" + (se.getWorkerId() != null ? " on worker " + se.getWorkerId() : "");
             case CREATED -> se.getAttemptCount() > 0 ? "Queued for retry" : "Queued, not started yet";
             case PENDING -> pendingReason(se, type);
@@ -947,6 +950,7 @@ public class SimpleProcessViewModel implements TriggersSupplier, VisibilitySuppl
     Status mapStepStatus(String rawStatus) {
         StepExecutionStatus status = StepExecutionStatus.valueOf(rawStatus);
         StatusType statusType = switch (status) {
+            case REVIEW_REQUIRED -> StatusType.WARNING;
             case CREATED -> StatusType.NONE;
             case PENDING, WAITING_ON_LOCK -> StatusType.INFO;
             case RUNNING, AWAITING_RETRY -> StatusType.WARNING;

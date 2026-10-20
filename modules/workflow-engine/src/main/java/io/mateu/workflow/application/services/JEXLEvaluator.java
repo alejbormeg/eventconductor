@@ -40,7 +40,8 @@ public class JEXLEvaluator {
     // in the UI — treat them as untrusted: RESTRICTED blocks reflection, System, Runtime, etc.
     static JexlEngine jexl = new JexlBuilder()
             .arithmetic(new LinearTimeRegexArithmetic(true))
-            .permissions(JexlPermissions.RESTRICTED)
+            .permissions(io.mateu.workflow.expression.JsonFunctions.PERMISSIONS)
+            .namespaces(io.mateu.workflow.expression.JsonFunctions.NAMESPACES)
             .features(GUARD_FEATURES)
             .cache(512)
             // Falsy, not strict: a guard reading a variable nobody set used to throw, every

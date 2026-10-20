@@ -33,12 +33,16 @@ public class FormsEngineKafkaConsumerConfig {
             // log line is no place for either).
             log.info("Received event: {}", event == null ? null : event.getClass().getSimpleName()
                     + (event instanceof TaskExecutionRequested task ? " " + task.taskExecutionId() : ""));
-            if (event instanceof TaskExecutionRequested(
-                    String taskExecutionId, String processId, String workflowDefinitionId, String stepId, String taskId,
-                    java.util.List<io.mateu.workflow.dtos.Variable> variables, Integer attempt, Integer priority
-            )) {
+            // Type patterns, not record patterns: the shared DTOs gain components over time (attempt,
+            // priority, invocationId), and a deconstruction would stop compiling at every one.
+            if (event instanceof TaskExecutionRequested task) {
+                var taskExecutionId = task.taskExecutionId();
+                var processId = task.processId();
+                var workflowDefinitionId = task.workflowDefinitionId();
+                var stepId = task.stepId();
+                var variables = task.variables();
 
-                if ("complete-form".equals(taskId)) {
+                if ("complete-form".equals(task.taskId())) {
                     var formId = variables.stream()
                             .filter(variable -> "formId".equals(variable.name()))
                             .findAny().orElseThrow().value();
@@ -60,10 +64,10 @@ public class FormsEngineKafkaConsumerConfig {
                 new Thread(() -> escalateTaskUseCase.handle(escalation)).start();
 
             }
-            if (event instanceof TaskCancellationRequested(String taskId)) {
+            if (event instanceof TaskCancellationRequested cancellation) {
 
                 new Thread(() -> cancelTaskUseCase
-                            .handle(new CancelTaskCommand(taskId))).start();
+                            .handle(new CancelTaskCommand(cancellation.taskId()))).start();
 
             }
 

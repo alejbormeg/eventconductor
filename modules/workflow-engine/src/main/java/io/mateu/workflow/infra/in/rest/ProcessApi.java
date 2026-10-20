@@ -137,7 +137,8 @@ public final class ProcessApi {
     public record StepView(
             @Schema(description = "Step execution id — what /steps/{stepExecutionId}/retry takes.") String id,
             @Schema(description = "Id of the step in the definition.") String stepId,
-            @Schema(description = "CREATED, PENDING, WAITING_ON_LOCK, RUNNING, AWAITING_RETRY, COMPLETED, ERROR, TIMEOUT or CANCELLED.")
+            @Schema(description = "CREATED, PENDING, WAITING_ON_LOCK, RUNNING, REVIEW_REQUIRED (an AGENT invocation held for"
+                    + " review; its process is PAUSED), AWAITING_RETRY, COMPLETED, ERROR, TIMEOUT or CANCELLED.")
             String status,
             @Schema(description = "Position in the process.") long order,
             @Schema(description = "Worker that ran it, when one did.") String workerId,
@@ -155,14 +156,39 @@ public final class ProcessApi {
             @Schema(description = "The loop pass this execution belongs to: 0 for a step's first run, one more"
                     + " each time a repeat or loopBack runs it again.") int iteration,
             @Schema(description = "True when a later pass of a loop replaced this execution (or a restart"
-                    + " discarded it): history, not the step's current execution.") boolean superseded) {
+                    + " discarded it): history, not the step's current execution.") boolean superseded,
+            @Schema(description = "For an AGENT step, its invocation of the published agent; null for every other step.")
+            AgentInvocationView agent) {
 
         static StepView of(StepExecution step) {
             return new StepView(step.getId(), step.getStepId(), nameOf(step.getStatus()), step.getOrder(),
                     step.getWorkerId(), step.getAttemptCount(), format(step.getStartedAt()),
                     format(step.getFinishedAt()), format(step.getDeadlineAt()), step.getAwaitingMessageName(),
                     step.getAwaitingCorrelationKey(), step.getParentExecutionId(), step.getItemIndex(),
-                    step.getIteration(), step.isSuperseded());
+                    step.getIteration(), step.isSuperseded(), AgentInvocationView.of(step));
+        }
+    }
+
+    @Schema(name = "AgentInvocation", description = "The invocation of a published agent by an AGENT step execution."
+            + " Never its request or result: those are the process's variables.")
+    public record AgentInvocationView(
+            @Schema(description = "The invocation id the agent runtime correlates every reply and cancellation with."
+                    + " Stable across redeliveries; a restart of the process starts a new one.") String invocationId,
+            @Schema(description = "True while the invocation is held for review (the step is REVIEW_REQUIRED and the"
+                    + " process PAUSED): only the runtime's correlated reconciliation releases it.") boolean underReview,
+            @Schema(description = "Why the engine held it: TIMEOUT (its timeout passed), CANCELLED (the process was"
+                    + " cancelled), END (an END transition cancelled it while in flight); null when the runtime asked for"
+                    + " the review, or there is no hold.", nullable = true) String holdReason,
+            @Schema(description = "The last state sequence accepted from the runtime: older or repeated replies are"
+                    + " ignored.", nullable = true) Long lastStateSequence) {
+
+        static AgentInvocationView of(StepExecution step) {
+            if (step.getInvocationId() == null) {
+                return null;
+            }
+            return new AgentInvocationView(step.getInvocationId(),
+                    io.mateu.workflow.domain.aggregates.StepExecutionStatus.REVIEW_REQUIRED.equals(step.getStatus()),
+                    step.getAgentHoldReason(), step.getLastAgentStateSequence());
         }
     }
 

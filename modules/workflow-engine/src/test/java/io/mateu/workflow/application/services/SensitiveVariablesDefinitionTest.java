@@ -78,6 +78,26 @@ class SensitiveVariablesDefinitionTest {
     }
 
     @Test
+    void anAgentReadingASensitiveVariableNeedsTheOptIn() {
+        var refused = SensitiveFixtures.definition(SensitiveFixtures.DEFINITION + SensitiveFixtures.AGENT_STEP);
+        assertThatThrownBy(refused::checkInvariants).hasMessageContaining("step 'assess'")
+                .hasMessageContaining("agent.allowSensitiveVariables: true");
+        // In the input, at any depth, as much as in the prompt.
+        var inInput = SensitiveFixtures.definition(SensitiveFixtures.DEFINITION + SensitiveFixtures.AGENT_STEP
+                .replace("Assess the claim of ${patient.name}", "Assess the claim")
+                .replace("{amount: \"${amount}\"}", "{card: [\"${cardNumber}\"]}"));
+        assertThatThrownBy(inInput::checkInvariants).hasMessageContaining("cardNumber");
+        var allowed = SensitiveFixtures.definition(SensitiveFixtures.DEFINITION
+                + SensitiveFixtures.AGENT_STEP.replace("ref: claims-assessor", "ref: claims-assessor\n      allowSensitiveVariables: true"));
+        allowed.checkInvariants();
+        assertThat(allowed.steps().stream().filter(s -> "assess".equals(s.id())).findFirst().orElseThrow()
+                .agent().allowSensitiveVariables()).isTrue();
+        // A definition without sensitive variables needs no opt-in.
+        SensitiveFixtures.definition(SensitiveFixtures.DEFINITION.replace("sensitiveVariables: [cardNumber, \"patient.*\"]\n", "")
+                + SensitiveFixtures.AGENT_STEP).checkInvariants();
+    }
+
+    @Test
     void theDeclarationIsPartOfTheVersion() {
         var versioning = new WorkflowDefinitionVersioningService(mock(WorkflowDefinitionVersionEntityRepository.class));
         var declared = SensitiveFixtures.definition();

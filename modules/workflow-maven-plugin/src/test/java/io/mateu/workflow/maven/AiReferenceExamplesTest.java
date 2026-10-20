@@ -238,6 +238,7 @@ class AiReferenceExamplesTest {
     static final List<String> DOC_PAGES = List.of(
             "doc/src/content/docs/guides/http-calls.md",
             "doc/src/content/docs/guides/llm-calls.md",
+            "doc/src/content/docs/guides/workflow-agents.md",
             "doc/src/content/docs/guides/workers.md",
             "doc/src/content/docs/guides/updating-running-processes.md",
             "doc/src/content/docs/guides/workflow-definitions.md",

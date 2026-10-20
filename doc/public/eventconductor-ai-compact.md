@@ -109,6 +109,7 @@ steps:
 | work in your code | `ACTION` (+ worker; `topic` routes it in kafka mode, `task` names a contract) |
 | REST call without a worker | `HTTP_CALL` `http: {connection, method, path, body, output, retryOn}` |
 | model call / structured extraction | `LLM_CALL` `llm: {connection, system, prompt, responseSchema, output}` |
+| governed agent from the IA catalogue | `AGENT` `agent: {ref, taskPrompt, input, outputVariable}` |
 | human approval / input | `USER_TASK` `formId` (+ `assignment`, `escalation`) |
 | exactly one branch by data | `CHOICE` + guarded `preconditions` links (+ unguarded default) → `JOIN joinType: XOR` |
 | parallel branches | `FORK` … `JOIN` (`preconditionStepIds`) |
@@ -142,6 +143,7 @@ steps:
 | `PUBLISH_EVENT` | domain event via the outbox; destination mapped by `workflow.events.destinations.<name>.topic`; CloudEvents on Kafka |
 | `HTTP_CALL` | built-in `http-call@1` (worker-http; topic `http-calls`); `output` = JEXL over `{status, headers, body}`; default `retryOn: [5xx, io]` (4xx final); same `Idempotency-Key` on retries |
 | `LLM_CALL` | built-in `llm-call@1` (worker-llm; `llm-calls`); `responseSchema` validated (`LLM_INVALID_OUTPUT`); `output` over `{text, json, usage, model}` |
+| `AGENT` | invoke an agent published in the IA catalogue (`ref` checked at import; prompt, model, tools, output schema are the catalogue's): task `run-agent@1` on `agent-calls`, variable `__agent`, `invocationId` on every reply; `retries: 0`, timeout 5 min; result = exactly `outputVariable` (JSON, `json:parse(x).f`); uncertain outcome → `REVIEW_REQUIRED` + process `PAUSED` until reconciled; `forEach` = one invocation per item |
 | `PROCESS` | child with ALL parent variables, key `parent:<stepExecutionId>`; `outputVariables` come back |
 | `FORK` / `JOIN` / `CHOICE` | gateways (see above); CHOICE picks the longest satisfied guard first, latches |
 | `LOCK` / `UNLOCK` | `lockName`, `lockKey` (JEXL); waiters park `WAITING_ON_LOCK`, FIFO |
@@ -255,6 +257,7 @@ class BookingSagaTest {
 ```
   `whenTask(task|step id|topic)` / `whenStep(id)` → `thenComplete(map)`, `thenFail(code[, retryable])`,
   `thenTimeout()`, `thenAnswer(fn)`; `whenHttpCall(step).thenRespond(status, body)`, `whenLlmCall(step).thenAnswer(text)`;
+  `whenAgent(step).thenOutput(json)` / `.thenReviewRequired()` (+ `resolveAgentReview(p, step)`) / `.thenFail(code, msg)`;
   `completeUserTask(p, step, values)`,
   `sendMessage`, `publishEvent`, `update`, `updateWithStart`, `advanceTime`. Assertions (`WorkflowAssertions.assertThat`):
   `isCompleted/isCompensated/isFailed/isWaitingAt/hasPassedSteps/hasVariable/hasReplied/hasPublishedEvent`.
@@ -290,7 +293,8 @@ class BookingSagaTest {
   `workflow.http.secrets.<NAME>`. LLM keys: `workflow.llm.connections.<name>.api-key`.
 - `sensitiveVariables` need `workflow.encryption.keys.<id>` (base64, 32 bytes) + `active-key`; masked in UI/REST/MCP;
   reveal with `POST /processes/{id}/variables/{name}/reveal {reason}` for `workflow.security.sensitive.reveal-roles`;
-  never usable as search attribute, correlation, lock or startPolicy key; LLM_CALL needs `llm.allowSensitiveVariables: true`.
+  never usable as search attribute, correlation, lock or startPolicy key; LLM_CALL needs `llm.allowSensitiveVariables: true`, AGENT (taskPrompt/input) `agent.allowSensitiveVariables: true`.
+- AGENT catalogue: `workflow.agents.catalogue-url`, `token-uri`, `client-id`, `client-secret` (`WORKFLOW_AGENTS_*`).
 
 ## Gotchas and upgrades
 

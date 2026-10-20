@@ -132,6 +132,23 @@ class StepExecutionStatusUpdatedEventHandlerTest {
     }
 
     @Test
+    void reconciliationRestartsRetryableFailuresDeferredByAReview() {
+        var failed = se(0, 2, false, null);
+        var agent = se(0, 0, false, null).withId("agent").withInvocationId("invocation")
+                .withStatus(StepExecutionStatus.RUNNING);
+        var executions = List.of(agent, failed);
+        when(stepExecutionRepository.findById("agent")).thenReturn(Optional.of(agent));
+        when(stepExecutionRepository.findByProcess(proc)).thenReturn(executions);
+        when(backoffPolicy.nextDelay(1)).thenReturn(java.time.Duration.ofMillis(50));
+
+        handler.handle(new StepExecutionStatusChanged("agent", TaskStatus.RUNNING, List.of(), "p-1", false, "invocation"));
+
+        assertThat(failed.getStatus()).isEqualTo(StepExecutionStatus.AWAITING_RETRY);
+        verify(stepExecutionRepository).save(failed);
+        verify(workflowMetrics).retryPerformed("wd-1", WorkflowMetrics.RetryTrigger.AUTO);
+    }
+
+    @Test
     void cancelsWorkerOnTimeout() {
         var se = se(3, 3, false, null).withStatus(StepExecutionStatus.TIMEOUT);
         when(stepExecutionRepository.findById("se-1")).thenReturn(Optional.of(se));

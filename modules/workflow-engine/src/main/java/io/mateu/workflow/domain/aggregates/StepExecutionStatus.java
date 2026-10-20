@@ -4,6 +4,8 @@ public enum StepExecutionStatus {
     CREATED,
     PENDING,
     RUNNING,
+    /** An external effect has an uncertain outcome; only correlated reconciliation releases it. */
+    REVIEW_REQUIRED,
     /**
      * A step that failed but has retries left and is waiting out its backoff delay before being
      * re-dispatched. It carries a {@code deadlineAt} (the moment the backoff expires); the timeout

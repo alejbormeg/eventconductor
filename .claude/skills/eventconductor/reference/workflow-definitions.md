@@ -60,9 +60,10 @@ for autocomplete. The schema forbids unknown keys. Examples: [patterns.md](patte
 | `replyVariables` \| `replyExpression` \| `replyTemplate` | REPLY | at most one |
 | `event` | PUBLISH_EVENT | `{destination, type, key?, payload \| payloadTemplate \| payloadVariables, format?}` |
 | `http` | HTTP_CALL | `{connection + path \| url, method, query, headers, body \| bodyTemplate, successStatus, output, auth, retryOn}` |
+| `agent` | AGENT | `{ref, taskPrompt?, input?, outputVariable, mcp?, rag?, peers?, allowSensitiveVariables?}` — `ref` must be published in the IA catalogue (checked at import); `retries: 0`; default `timeout` 5 min |
 | `llm` | LLM_CALL | `{connection, model?, system?, prompt, temperature?, maxTokens?, responseSchema?, output? \| outputVariable?, usageVariable?, allowSensitiveVariables?}` |
 | `continueAsNew` | CONTINUE_AS_NEW | `{version?: same\|latest, variables?: [names] \| {name: template}}` |
-| `forEach` | ACTION, USER_TASK, PROCESS, HTTP_CALL, LLM_CALL, RULE | `{items, as?, indexAs?, mode?: parallel\|sequential, maxConcurrency?, output?, outputElement?, completion?: all\|any\|JEXL}` |
+| `forEach` | ACTION, USER_TASK, PROCESS, HTTP_CALL, LLM_CALL, RULE, AGENT | `{items, as?, indexAs?, mode?: parallel\|sequential, maxConcurrency?, output?, outputElement?, completion?: all\|any\|JEXL}` |
 | `repeat` | same as forEach | `{until, maxIterations, delay?}` |
 | `loopBack` | all but START/END/REPLY | `{to, while?, maxIterations, delay?}` |
 | `maxSuccessfulExecutions` | all | cap enforced when a loop would run the step again |
@@ -88,6 +89,11 @@ for autocomplete. The schema forbids unknown keys. Examples: [patterns.md](patte
   Kafka; `ExternalEventPublisher` bean embedded; `workflow.events.destinations.<name>.topic` maps the name).
 - **HTTP_CALL / LLM_CALL** — built-in tasks `http-call@1` (worker-http) and `llm-call@1`
   (worker-llm). See [patterns.md](patterns.md) and [security.md](security.md).
+- **AGENT** — invoke an agent published in the IA catalogue (its prompt, model, MCP/RAG/peers and output schema
+  are the catalogue's): task `run-agent@1` on `agent-calls`, one variable `__agent`, an `invocationId` every reply
+  names. Result: exactly `outputVariable`, as JSON (`json:parse(x).field` in guards). An uncertain outcome (runtime
+  review, timeout, cancel while running) → step `REVIEW_REQUIRED`, process `PAUSED`, until the runtime reconciles it;
+  operations that move steps are refused meanwhile. Guide: `doc/src/content/docs/guides/workflow-agents.md`.
 - **PROCESS** — child workflow with ALL parent variables, business key `parent:<stepExecutionId>`;
   child ERROR/CANCELLED → step ERROR; parent cancel cascades.
 - **FORK / JOIN / CHOICE** — no-worker gateways: FORK = all successors; CHOICE = exactly one (first

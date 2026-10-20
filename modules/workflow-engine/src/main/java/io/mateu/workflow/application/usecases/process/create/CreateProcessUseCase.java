@@ -180,6 +180,15 @@ public class CreateProcessUseCase {
                         command.variables() != null?command.variables(): List.of(),
                         command.parentStepExecutionId()
                 );
+        String initiatingActor = command.caller() == null ? null : command.caller().subject();
+        if (command.parentStepExecutionId() != null) {
+            initiatingActor = stepExecutionRepository.findById(command.parentStepExecutionId())
+                    .flatMap(parentStep -> processRepository.findById(parentStep.getProcessId()))
+                    .map(io.mateu.workflow.domain.aggregates.Process::getInitiatingActor).orElse(null);
+        }
+        var creationEvents = process.popEvents();
+        process = process.withInitiatingActor(initiatingActor);
+        creationEvents.forEach(process::send);
         if (workflowDefinition.paused()) {
             // Born paused: creation is deliberately still accepted while the definition is
             // paused (cron included), but nothing may start — the orchestration gate holds

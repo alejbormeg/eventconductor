@@ -1,0 +1,14 @@
+{
+  "id": "dist-agent",
+  "name": "Assess a claim with a published agent",
+  "version": 1,
+  "sensitiveVariables": ["cardNumber"],
+  "steps": [
+    { "id": "start", "type": "START", "name": "Start" },
+    { "id": "assess", "type": "AGENT", "name": "Assess the claim", "preconditionStepId": "start", "retries": 0,
+      "agent": { "ref": "claims-assessor", "taskPrompt": "Assess claim ${claimId}",
+                 "input": { "claimId": "${claimId}", "card": "${cardNumber}" },
+                 "mcp": ["crm"], "outputVariable": "assessment", "allowSensitiveVariables": true } },
+    { "id": "end", "type": "END", "name": "End", "preconditionStepId": "assess" }
+  ]
+}

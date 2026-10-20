@@ -436,6 +436,36 @@ public final class WorkflowTestRuntime {
         return executor.llmStub(stepId);
     }
 
+    /**
+     * Stubs what the agent runtime answers an AGENT step. Without a stub an AGENT step fails: a test never
+     * reaches an agent runtime. One answer per invocation — a forEach runs one per item.
+     */
+    public AgentStub whenAgent(String stepId) {
+        return executor.agentStub(stepId);
+    }
+
+    /**
+     * The agent runtime reconciles a held AGENT invocation of {@code stepId}: the one it put under review
+     * ({@link AgentStub#thenReviewRequired()}), or one the engine held after a timeout or a cancel. Its answer is
+     * the next one of the step's {@link #whenAgent} script — an output, a failure, a confirmed cancellation
+     * ({@link AgentStub#thenCancelled()}), another review.
+     */
+    public void resolveAgentReview(TestProcess process, String stepId) {
+        var held = repository(StepExecutionRepository.class).findByProcessId(process.id()).stream()
+                .anyMatch(se -> stepId.equals(se.getStepId())
+                        && io.mateu.workflow.domain.aggregates.StepExecutionStatus.REVIEW_REQUIRED.equals(se.getStatus()));
+        var request = held ? executor.unholdAgent(process.id(), stepId) : null;
+        if (request == null) {
+            throw new AssertionError("Step '" + stepId + "' of " + process + " has no AGENT invocation under review");
+        }
+        executor.answerAgent(request, whenAgent(stepId).next(), true);
+    }
+
+    /** The agent catalogue AGENT steps are validated against in a test: every reference is taken as published. */
+    public TestAgentCatalogue agentCatalogue() {
+        return context.getBean(TestAgentCatalogue.class);
+    }
+
     /** Completes a task that is waiting for its worker (not mocked, or mocked with {@code thenTimeout}). */
     public void completeTask(TestProcess process, String stepId) {
         completeTask(process, stepId, Map.of());

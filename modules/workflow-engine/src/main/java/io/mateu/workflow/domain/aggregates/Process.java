@@ -110,6 +110,33 @@ public class Process extends AggregateRoot implements Identifiable {
     @Hidden
     private boolean businessKeyReleased;
 
+    /** Audit only: stable initiator subject. Never a credential or an authorization grant. */
+    @Hidden
+    private String initiatingActor;
+
+    public Process(String id, String name, String workflowDefinitionId, int workflowDefinitionVersion,
+                   String workflowDefinitionJson, String businessKey, List<Variable> variables,
+                   ProcessStatus status, int completionPercentage, LocalDateTime created,
+                   LocalDateTime started, LocalDateTime finished, LocalDateTime pausedAt,
+                   String parentStepExecutionId, Integer version, ProcessReply reply) {
+        this(id, name, workflowDefinitionId, workflowDefinitionVersion, workflowDefinitionJson, businessKey,
+                variables, status, completionPercentage, created, started, finished, pausedAt,
+                parentStepExecutionId, version, reply, null, null, false, null);
+    }
+
+    /** The shape before the initiating actor was recorded: none. */
+    public Process(String id, String name, String workflowDefinitionId, int workflowDefinitionVersion,
+                   String workflowDefinitionJson, String businessKey, List<Variable> variables,
+                   ProcessStatus status, int completionPercentage, LocalDateTime created,
+                   LocalDateTime started, LocalDateTime finished, LocalDateTime pausedAt,
+                   String parentStepExecutionId, Integer version, ProcessReply reply,
+                   String continuedFromProcessId, String continuedAsProcessId, boolean businessKeyReleased) {
+        this(id, name, workflowDefinitionId, workflowDefinitionVersion, workflowDefinitionJson, businessKey,
+                variables, status, completionPercentage, created, started, finished, pausedAt,
+                parentStepExecutionId, version, reply, continuedFromProcessId, continuedAsProcessId,
+                businessKeyReleased, null);
+    }
+
     public static Process create(
             String processId,
             WorkflowDefinition workflowDefinition,

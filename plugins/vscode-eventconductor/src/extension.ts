@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import * as yaml from "js-yaml";
+import { catalogueEndpoint, fetchAgentCatalogue } from "./agentCatalogue";
 import {
   applicationYaml,
   artifactIdFor,
@@ -12,6 +13,7 @@ import {
 
 const GRAPH_VIEW_TYPE = "eventconductor.graphEditor";
 const FORM_VIEW_TYPE = "eventconductor.formEditor";
+const CATALOGUE_SECRET_PREFIX = "eventconductor.agentCatalogue.auth:";
 
 export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
@@ -30,6 +32,14 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand("eventconductor.openAsGraph", () => reopenActive(GRAPH_VIEW_TYPE)),
     vscode.commands.registerCommand("eventconductor.showTextBeside", () => openActiveBeside()),
     vscode.commands.registerCommand("eventconductor.exportSvg", () => exportActiveGraph()),
+    vscode.commands.registerCommand("eventconductor.configureAgentCatalogue", () => configureAgentCatalogue(context)),
+    vscode.workspace.onDidChangeConfiguration(e => {
+      if (e.affectsConfiguration("eventconductor.agentCatalogueUrl")) reloadAgentCatalogues();
+    }),
+    context.secrets.onDidChange(e => {
+      if (e.key.startsWith(CATALOGUE_SECRET_PREFIX)) reloadAgentCatalogues();
+    }),
+    vscode.workspace.onDidGrantWorkspaceTrust(() => reloadAgentCatalogues()),
     // .ecform visual editor commands (mirrors the .ec ones).
     vscode.commands.registerCommand("eventconductor.form.openAsText", () => reopenActive("default")),
     vscode.commands.registerCommand("eventconductor.form.openAsForm", () => reopenActive(FORM_VIEW_TYPE)),
@@ -44,6 +54,64 @@ export function activate(context: vscode.ExtensionContext) {
 }
 
 export function deactivate() {}
+
+function reloadAgentCatalogues() {
+  for (const panel of graphPanels) panel.webview.postMessage({ type: "reloadAgentCatalogue" });
+}
+
+async function configureAgentCatalogue(context: vscode.ExtensionContext) {
+  if (!vscode.workspace.isTrusted) {
+    vscode.window.showErrorMessage("Trust this workspace before connecting to an agent catalogue.");
+    return;
+  }
+  const configuration = vscode.workspace.getConfiguration("eventconductor");
+  const url = await vscode.window.showInputBox({
+    title: "Agent catalogue endpoint",
+    prompt: "Full URL of the workflow engine's /api/workflow-agents endpoint",
+    value: configuration.get<string>("agentCatalogueUrl") || "http://127.0.0.1:18105/api/workflow-agents",
+    ignoreFocusOut: true,
+    validateInput: value => {
+      try { catalogueEndpoint(value); return undefined; }
+      catch (error) { return (error as Error).message; }
+    },
+  });
+  if (url === undefined) return;
+  const endpoint = catalogueEndpoint(url);
+  const choice = await vscode.window.showQuickPick([
+    { label: "HTTP Basic", auth: "basic", description: "Username and password (local engine)" },
+    { label: "Bearer token", auth: "bearer", description: "An existing access token" },
+    { label: "No authentication", auth: "none", description: "An endpoint that allows anonymous access" },
+  ], { title: "Agent catalogue authentication", ignoreFocusOut: true });
+  if (!choice) return;
+  if (choice.auth !== "none" && endpoint.protocol !== "https:" && !["localhost", "127.0.0.1", "[::1]"].includes(endpoint.hostname)) {
+    vscode.window.showErrorMessage("Catalogue authentication requires HTTPS, except on localhost.");
+    return;
+  }
+  let authorization: string | undefined;
+  if (choice.auth === "basic") {
+    const username = await vscode.window.showInputBox({
+      title: "Catalogue username", value: "local-operator", ignoreFocusOut: true,
+      validateInput: value => !value || /[:\r\n]/.test(value) ? "Enter a username without colons or line breaks." : undefined,
+    });
+    if (username === undefined) return;
+    const password = await vscode.window.showInputBox({ title: "Catalogue password", password: true, ignoreFocusOut: true });
+    if (password === undefined) return;
+    authorization = "Basic " + Buffer.from(`${username}:${password}`, "utf8").toString("base64");
+  } else if (choice.auth === "bearer") {
+    const token = await vscode.window.showInputBox({
+      title: "Catalogue access token", password: true, ignoreFocusOut: true,
+      validateInput: value => !value.trim() || /\s/.test(value) ? "Enter a token without whitespace." : undefined,
+    });
+    if (token === undefined) return;
+    authorization = "Bearer " + token;
+  }
+  const key = CATALOGUE_SECRET_PREFIX + endpoint.href;
+  if (authorization) await context.secrets.store(key, authorization);
+  else await context.secrets.delete(key);
+  await configuration.update("agentCatalogueUrl", endpoint.href, vscode.ConfigurationTarget.Global);
+  reloadAgentCatalogues();
+  vscode.window.showInformationMessage("Agent catalogue connection saved. Open graphs will reload it.");
+}
 
 /** The .ectask to act on: the explorer/editor menu passes it; otherwise use the active tab. */
 function taskUri(uri?: vscode.Uri): vscode.Uri | undefined {
@@ -298,6 +366,25 @@ class EventConductorEditorProvider implements vscode.CustomTextEditorProvider {
     // into the author's chosen format.
     let docIsYaml = looksLikeYaml(document.getText());
     let applyingOwnEdit = false;
+    let disposed = false;
+    let catalogueRequestId = 0;
+
+    const pushAgentCatalogue = async () => {
+      const requestId = ++catalogueRequestId;
+      let entries: Awaited<ReturnType<typeof fetchAgentCatalogue>> = [];
+      let error = "";
+      try {
+        if (!vscode.workspace.isTrusted) throw new Error("Trust this workspace before connecting to an agent catalogue.");
+        const url = vscode.workspace.getConfiguration("eventconductor").get<string>("agentCatalogueUrl");
+        if (!url) throw new Error("Agent catalogue not configured. Run EventConductor: Configure Agent Catalogue.");
+        const endpoint = catalogueEndpoint(url);
+        const authorization = await this.context.secrets.get(CATALOGUE_SECRET_PREFIX + endpoint.href);
+        entries = await fetchAgentCatalogue(endpoint.href, authorization);
+      } catch (cause) { error = cause instanceof Error ? cause.message : "Agent catalogue unavailable."; }
+      if (!disposed && requestId === catalogueRequestId) {
+        webview.postMessage({ type: "agentCatalogue", entries, error });
+      }
+    };
 
     const pushToWebview = () => {
       const text = document.getText();
@@ -317,6 +404,7 @@ class EventConductorEditorProvider implements vscode.CustomTextEditorProvider {
     });
     if (this.config.tag === GRAPH_CONFIG.tag) graphPanels.add(webviewPanel);
     webviewPanel.onDidDispose(() => {
+      disposed = true;
       changeSub.dispose();
       graphPanels.delete(webviewPanel);
     });
@@ -324,6 +412,8 @@ class EventConductorEditorProvider implements vscode.CustomTextEditorProvider {
     webview.onDidReceiveMessage(async (msg) => {
       if (msg?.type === "ready") {
         pushToWebview();
+      } else if (msg?.type === "requestAgentCatalogue" && this.config.tag === GRAPH_CONFIG.tag) {
+        await pushAgentCatalogue();
       } else if (msg?.type === "edit") {
         let obj: unknown;
         try {
@@ -396,7 +486,7 @@ class EventConductorEditorProvider implements vscode.CustomTextEditorProvider {
 <body>
   <div id="error"></div>
   <!-- no-expand: the custom editor already fills the pane, so expanding it means nothing -->
-  <${tag} no-expand></${tag}>
+  <${tag} no-expand${this.config.tag === GRAPH_CONFIG.tag ? " host-agent-catalogue" : ""}></${tag}>
   <script nonce="${nonce}" type="module" src="${bundle}"></script>
   <script nonce="${nonce}" src="${main}"></script>
 </body>

@@ -14,7 +14,8 @@ import org.springframework.context.annotation.Bean;
 /**
  * The kit's beans, imported by {@link EventConductorTest}: the movable clock (as the engine's clock
  * bean, so the engine installs it), the stubbing worker (as the engine's {@link EmbeddedTaskExecutor},
- * so the worker SDK's own executor backs off) and the {@link WorkflowTestRuntime}.
+ * so the worker SDK's own executor backs off), the agent catalogue ({@link TestAgentCatalogue}) and the
+ * {@link WorkflowTestRuntime}.
  *
  * <p>A {@code @TestConfiguration}, so a component scan never picks it up: it is in a context only
  * when a test imports it.
@@ -33,6 +34,16 @@ public class WorkflowTestConfiguration {
                                                   ObjectProvider<TaskRegistry> taskRegistry,
                                                   ObjectProvider<TaskDispatcher> taskDispatcher) {
         return new StubbingTaskExecutor(updateStepExecution, definitions, taskRegistry, taskDispatcher);
+    }
+
+    /**
+     * The agent catalogue AGENT steps are validated against: a test never contacts the IA catalogue, even when
+     * the application configures {@code workflow.agents.catalogue-url}.
+     */
+    @Bean
+    @org.springframework.context.annotation.Primary
+    public TestAgentCatalogue workflowTestAgentCatalogue() {
+        return new TestAgentCatalogue();
     }
 
     @Bean

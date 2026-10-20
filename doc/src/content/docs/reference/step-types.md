@@ -812,12 +812,50 @@ Rendered by the engine and executed by the built-in `llm-call@1` task (`worker-l
 
 ---
 
+## AGENT
+
+Invokes an agent **published in the IA catalogue** — its system prompt, model, allowed MCP servers, RAG sources,
+peers and JSON output schema are the catalogue's — and gives it a task and explicit input. The engine checks the
+reference against the catalogue when the definition is imported; the agent runtime runs it.
+
+```yaml
+- id: assess
+  type: AGENT
+  name: Assess the claim
+  preconditionStepId: start
+  timeout: 300000
+  retries: 0
+  agent:
+    ref: claims-assessor
+    taskPrompt: "Assess claim ${claimId} against the policy."
+    input: { claimId: "${claimId}", amount: "${amount}" }
+    mcp: [crm]
+    outputVariable: assessment
+```
+
+**Required:** `agent` with `ref` (a published agent) and `outputVariable` (the variable its JSON result is written
+to). **Optional:** `taskPrompt` (text template), `input` (a template of any shape; absent is `{}`), `mcp` / `rag` /
+`peers` (absent inherits the agent's, `[]` disables, a list can only narrow what the agent publishes),
+`allowSensitiveVariables` (`true` to let `taskPrompt` and `input` read the definition's
+[sensitive variables](/guides/sensitive-data-and-encryption/) — without it such a definition is refused at load).
+`retries` must be `0` (an agent failure is final; restarting the process starts a new invocation); `timeout`
+defaults to five minutes. No model, key or credential in the block.
+
+Dispatched as task `run-agent@1` on topic `agent-calls`, with one variable, `__agent` (the rendered request), and an
+`invocationId` every reply and cancellation is correlated with. The result must be exactly the `outputVariable`, as
+valid JSON; read it with `json:parse(assessment).decision`. When the outcome of an effect is uncertain — the runtime
+asks for a review, the step times out, the process is cancelled while it runs — the step is `REVIEW_REQUIRED` and
+the process `PAUSED` until the runtime reconciles it. Works with `forEach` (one invocation per item). See
+[Agents in workflows](/guides/workflow-agents/).
+
+---
+
 ## AGENT_CALL (removed)
 
 `AGENT_CALL` (added in 2.32.0) was removed in 2.34.0. A definition that still declares a step of this type
 fails to load — in the engine and in the Maven plugin — with: *AGENT_CALL was removed in 2.34.0; use the AGENT
 step (agents from the IA catalogue)*. Agents are published in the IA catalogue and run by the IA runtime
-through the `AGENT` step.
+through the [`AGENT`](#agent) step.
 
 A process started before the upgrade that reaches an `AGENT_CALL` step (or has one running) fails that step,
 final, with error code `STEP_TYPE_REMOVED` in its log: no retry is spent on it, the saga compensates as for any

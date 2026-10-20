@@ -30,6 +30,9 @@ class HttpTaskRoutingTest {
         assertThat(routing.routesTask(null, "evaluate-rule")).isFalse();
         assertThat(routing.routesTask("http-calls", "http-call@1")).isFalse();
         assertThat(routing.routesTask("llm-calls", "")).isFalse();
+        // AGENT: the agent runtime's, which echoes the invocation id the HTTP task protocol does not carry.
+        assertThat(routing.routesTask("agent-calls", "run-agent@1")).isFalse();
+        assertThat(routing.routesTask("payments", "run-agent@1")).isFalse();
         assertThat(routing.routesTask("payments", null)).isTrue();
         assertThat(routing.namesTopic("payments")).isFalse();
         assertThat(routing.toString()).isEqualTo("*");

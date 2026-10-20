@@ -24,9 +24,12 @@ import java.util.regex.Pattern;
  */
 public final class LoopRules {
 
-    /** The step types a {@code forEach} or a {@code repeat} may be declared on: the ones that do work. */
+    /**
+     * The step types a {@code forEach} or a {@code repeat} may be declared on: the ones that do work. An AGENT
+     * runs one invocation per item (and per pass), each with its own invocation id.
+     */
     public static final Set<String> REPEATABLE_TYPES =
-            Set.of("ACTION", "USER_TASK", "PROCESS", "HTTP_CALL", "LLM_CALL", "RULE");
+            Set.of("ACTION", "USER_TASK", "PROCESS", "HTTP_CALL", "LLM_CALL", "RULE", "AGENT");
 
     /** The step types that may not carry a {@code loopBack}. */
     private static final Set<String> NO_LOOP_BACK_TYPES = Set.of("START", "END", "REPLY");

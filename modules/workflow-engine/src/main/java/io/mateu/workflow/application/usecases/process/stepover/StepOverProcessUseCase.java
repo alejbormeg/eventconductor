@@ -136,6 +136,18 @@ public class StepOverProcessUseCase {
                 .collect(java.util.stream.Collectors.toMap(StepExecution::getId, StepExecution::getStatus));
 
         var result = workflowOrchestrationService.calculateNextTransitions(process, stepExecutions);
+        boolean awaitingAgentCancellation = false;
+        for (var changed : result.getStepsToSave()) {
+            var original = stepExecutions.stream().filter(step -> step.id().equals(changed.id())).findFirst().orElse(null);
+            if (changed.getStatus() == StepExecutionStatus.CANCELLED && changed.getInvocationId() != null
+                    && original != null && original.getStatus().isInFlightAtAWorker()) {
+                changed.holdAgent("END");
+                awaitingAgentCancellation = true;
+            }
+        }
+        if (awaitingAgentCancellation) result = new io.mateu.workflow.domain.services.WorkflowOrchestrationService.TransitionResult(
+                result.getUpdatedProcess().withStatus(ProcessStatus.PAUSED).withPausedAt(io.mateu.workflow.time.EngineClock.now()),
+                result.getStepsToSave(), false, false);
 
         // Resolve any LOCK/UNLOCK step that just started this pass. It runs in this same transaction,
         // which already holds the process lock, so acquire/release is serialized per process here and
@@ -179,7 +191,7 @@ public class StepOverProcessUseCase {
             var before = statusBefore.get(stepExecution.getId());
             if (StepExecutionStatus.CANCELLED.equals(stepExecution.getStatus())
                     && before != null && before.isInFlightAtAWorker()) {
-                downstreamEventPublisher.publish(new TaskCancellationRequested(stepExecution.getId()),
+                downstreamEventPublisher.publish(new TaskCancellationRequested(stepExecution.getId(), stepExecution.getInvocationId()),
                         stepExecution.topic());
             }
             // END-transition and implicit-completion cancellations (and start-time errors)

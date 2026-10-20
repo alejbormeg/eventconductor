@@ -34,6 +34,7 @@ features: `updates`, `startPolicy`, `businessKeyPolicy`, `CONTINUE_AS_NEW`, `pri
 | automated work in your code | `ACTION` (+ a worker; `topic` routes it, `task` names a contract) |
 | call a REST API without a worker | `HTTP_CALL` (`http: {connection, path, …}`; needs `worker-http`) |
 | classify / extract / summarize with a model | `LLM_CALL` (`llm: {connection, prompt, …}`; needs `worker-llm`) |
+| run a governed agent (tools, RAG, peers) published in the IA catalogue | `AGENT` (`agent: {ref, taskPrompt?, input?, outputVariable}`; the IA runtime serves `agent-calls`) |
 | human approval / data entry | `USER_TASK` (`formId`, `assignment`, `escalation`; forms-engine) |
 | pick ONE branch by data | `CHOICE` + guarded `preconditions` links, converge with `JOIN joinType: XOR` |
 | run branches in parallel, then wait for all | `FORK` … `JOIN` (`preconditionStepIds` = branch ends) |

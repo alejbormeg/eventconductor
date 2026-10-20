@@ -19,8 +19,26 @@ public record UpdateStepExecutionCommand(
         String log,
         StepExecutionStatus status,
         boolean nonRetryable,
-        Integer attempt
+        Integer attempt,
+        String invocationId,
+        boolean reviewResolved,
+        Long stateSequence
 ) {
+
+    public UpdateStepExecutionCommand(String stepId, List<Variable> variables, String log, StepExecutionStatus status,
+                                      boolean nonRetryable, Integer attempt) {
+        this(stepId, variables, log, status, nonRetryable, attempt, null, false, null);
+    }
+
+    public UpdateStepExecutionCommand(String stepId, List<Variable> variables, String log, StepExecutionStatus status,
+                                      boolean nonRetryable, String invocationId, boolean reviewResolved, Long stateSequence) {
+        this(stepId, variables, log, status, nonRetryable, null, invocationId, reviewResolved, stateSequence);
+    }
+
+    public UpdateStepExecutionCommand(String stepId, List<Variable> variables, String log, StepExecutionStatus status,
+                                      boolean nonRetryable, String invocationId, boolean reviewResolved) {
+        this(stepId, variables, log, status, nonRetryable, null, invocationId, reviewResolved, null);
+    }
 
     public UpdateStepExecutionCommand(String stepId, List<Variable> variables, String log, StepExecutionStatus status,
                                       boolean nonRetryable) {

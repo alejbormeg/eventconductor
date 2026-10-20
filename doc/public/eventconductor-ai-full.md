@@ -404,6 +404,14 @@ The engine renders the request (templates in url/path, query, headers, body) and
 ```
 The engine renders `system` and `prompt` (text templates) and dispatches the built-in task `llm-call@1` (library `worker-llm` on Spring AI, with `spring-ai-anthropic` and/or `spring-ai-openai`: embedded in the engine's pod, or topic `llm-calls` served by `llm-worker-standalone-app`). Connections are configuration: `workflow.llm.connections.<name>` = `provider` (`anthropic` | `openai`), `model`, `api-key`, `base-url`, `temperature`, `max-tokens` (4096), `timeout` (PT60S), `structured-output` (`prompt` | `native`). A step may override `model`, `temperature`, `maxTokens`. With `responseSchema` the answer must be one JSON document valid against it (`LLM_INVALID_OUTPUT` otherwise, retried). Answer → `outputVariable` (text / JSON) and `output` (JEXL over `{text, json, usage, model, finishReason}`); token usage → `usageVariable`. Provider 4xx → `LLM_<status>`, final; 408/409/429/5xx and `LLM_IO` retried. Metrics: `eventconductor.llm.call{workflow,step,connection,model,outcome}`, `eventconductor.llm.tokens{workflow,step,connection,model,type}`.
 
+### AGENT — run an agent published in the IA catalogue
+```json
+{ "id": "assess", "type": "AGENT", "name": "Assess the claim", "preconditionStepId": "log", "retries": 0,
+  "agent": { "ref": "claims-assessor", "taskPrompt": "Assess claim ${claimId}.",
+             "input": { "claimId": "${claimId}", "amount": "${amount}" }, "outputVariable": "assessment" } }
+```
+The agent's system prompt, model, MCP servers, RAG sources, peers and JSON output schema are the IA catalogue's; the workflow gives the task (`taskPrompt`, a text template) and explicit `input` (a template; absent = `{}`). `mcp`/`rag`/`peers` absent inherit, `[]` disables, a list can only narrow. The engine checks `ref` against the catalogue at import (`workflow.agents.catalogue-url`, `token-uri`, `client-id`, `client-secret`; client credentials) — no catalogue, no AGENT step. It dispatches `run-agent@1` on `agent-calls` with one variable `__agent` and an `invocationId`; the runtime's replies name it, with a growing `stateSequence` (stale or repeated replies are ignored). The result is exactly `outputVariable`, valid JSON (read with `json:parse(assessment).decision`). `retries` must be 0; `timeout` defaults to 5 min. An uncertain outcome — the runtime asks for review, the step times out, the process is cancelled while it runs — holds the step `REVIEW_REQUIRED` and the process `PAUSED` until the runtime reconciles (`reviewResolved`); a timed-out invocation the runtime confirms stopped becomes `TIMEOUT` (`onTimeoutStepId` applies). Meanwhile complete-step, retry-from, migration, resume, retry and restart are refused; an invocation in flight is not completed, reset or migrated by hand either. `forEach` = one invocation per item. With `sensitiveVariables`, reading one in `taskPrompt`/`input` needs `allowSensitiveVariables: true` (and `__agent` is sealed). Guide: `doc/src/content/docs/guides/workflow-agents.md`.
+
 ### Loops and multi-instance — `forEach`, `repeat`, `loopBack`
 The precondition graph stays acyclic (a cycle is still an error); repetition is declared on a step:
 ```yaml
@@ -802,6 +810,7 @@ class BookingSagaTest {
 
 - **Mocks**: `whenStep(stepId)` wins; `whenTask(x)` matches the task id without version, the step id when the step names no task, or the step's `topic`. Answers `thenComplete(map)`, `thenFail(code)` (retryable) / `thenFail(code, false)` (final), `thenTimeout()` (never answers), `thenAnswer(invocation -> TaskOutcome.complete(...) | fail(...) | noReply())`; consumed in order, the last repeats. An un-mocked task runs the app's real `TaskHandler` when the test boots it (`classes = {WorkflowTestApplication.class, MyHandlers.class}`, needs `worker-embedded`), otherwise waits: answer with `completeTask(p, step, vars)`, `failTask(p, step, code, retryable)`, `completeUserTask(p, step, submitted)` (USER_TASKs always wait unless mocked).
 - **HTTP_CALL / LLM_CALL** never reach the network: `whenHttpCall(step).thenRespond(status, body[, headers])` / `.thenIoError()` apply the step's `successStatus`, `retryOn`, `output`; `whenLlmCall(step).thenAnswer(text)` / `.thenFail(code, retryable)` apply `outputVariable`, `usageVariable`, `output` (schema not validated). Unstubbed → the step fails `HTTP_CALL_NOT_STUBBED` / `LLM_CALL_NOT_STUBBED`. Stubs record `requests()`.
+- **AGENT** never reaches a catalogue or a runtime: every `ref` is taken as published (`agentCatalogue()`), and `whenAgent(step).thenOutput(json)` / `.thenFail(code, message)` / `.thenReviewRequired()` / `.thenCancelled()` / `.thenNoReply()` script the runtime, one answer per invocation (a forEach has one per item). `resolveAgentReview(p, step)` reconciles a held invocation with the next answer. Unstubbed → `AGENT_NOT_STUBBED`.
 - **Time**: `advanceTime(Duration)` / `advanceTimeTo(LocalDateTime)` jump from one due moment to the next (TIMER at its moment, a timeout 1 ms after its limit — it expires strictly after —, retry backoffs with the real policy, `repeat`/`loopBack` `delay`s, cron occurrences — one process each), running every scheduler pass at each; `runUntilIdle()`; `now()`. Every call is synchronous.
 - **Other drivers**: `sendMessage(name, correlationKey, vars)`, `publishEvent(destination, type, data)` (triggers + `onEvent`), `publishedEvents(p)`, `cancel(p)`, `process(businessKey)`, `processes(definitionId)`, `invocationsOf(step)` (each with `variables`, `attempt`, `at` = engine time).
 - **Assertions** (`WorkflowAssertions.assertThat(process)`): `isCompleted`, `isCompensated`, `isCompensationFailed`, `isFailed`, `isCancelled`, `isRunning`, `hasStatus`, `hasPassedSteps`, `hasNotPassedSteps`, `isWaitingAt(step)`, `hasStepStatus(step, status)`, `stepExecutions(step)` (AssertJ list; a retried step is ONE execution), `hasVariable(name, value)` (text as text, else JSON), `hasVariables`, `doesNotHaveVariable`, `hasReplied()`, `hasReplied(json)`, `hasReplyOutcome`, `hasPublishedEvent(type)`.
@@ -874,6 +883,7 @@ Workers may only report `RUNNING`, `COMPLETED`, `ERROR`.
 | `downstream` | orchestrator → workers | `TaskExecutionRequested` (per ACTION step `topic`) |
 | `outbox` | internal | orchestrator outbox relay |
 | `http-calls` / `llm-calls` | orchestrator → built-in workers | `HTTP_CALL` / `LLM_CALL` tasks |
+| `agent-calls` | orchestrator → IA agent runtime | `AGENT` invocations (`run-agent@1`, `invocationId`); replies on `upstream` |
 | `dead-letter` | out | records parked as permanently unprocessable |
 | `human-tasks` | forms engine → out | task lifecycle CloudEvents `io.eventconductor.task.*` |
 | destinations | in / out | `workflow.events.destinations.<name>.topic` for PUBLISH_EVENT, triggers, `onEvent` (consumer in `inbound-events-kafka`) |
@@ -1112,7 +1122,7 @@ and rate-limit permits.
   MCP `revealProcessVariable` for `workflow.security.sensitive.reveal-roles` (audited). Embedded workers see
   plaintext; Kafka/HTTP workers see ciphertext unless configured with the same keys. Refused at load when
   computed from a sensitive variable: search attributes, correlation expressions, lock keys, `startPolicy.key`,
-  trigger business keys. `LLM_CALL`/update replies reading one need `allowSensitiveVariables: true`.
+  trigger business keys. `LLM_CALL`/`AGENT`/update replies reading one need `allowSensitiveVariables: true`.
 - **Webhooks** — git-import webhooks need `workflow.git-import.webhook-secret` (2.28); the `webhook-gateway` verifies
   GitHub / HMAC signatures (`workflow.webhooks.endpoints.<name>.{provider, destination, secret}`); its `rest`
   transport needs `workflow.webhooks.engine.api-key`.
@@ -1134,7 +1144,11 @@ and rate-limit permits.
   ALTER), V56.1 (concurrent indexes); `TaskExecutionRequested.priority` appended. **Don't import definitions using
   `CONTINUE_AS_NEW` or a reusing `businessKeyPolicy` until every pod runs 2.33.**
 - **2.34** — `AGENT_CALL` removed (breaking): definitions using it fail to load; use the `AGENT` step (agents
-  from the IA catalogue). An in-flight `AGENT_CALL` step fails, final, with `STEP_TYPE_REMOVED`.
+  from the IA catalogue). An in-flight `AGENT_CALL` step fails, final, with `STEP_TYPE_REMOVED`. The `AGENT` step
+  arrives: V57 (new nullable columns); `TaskExecutionRequested.invocationId`, `TaskStatusChanged.invocationId`/
+  `reviewResolved`/`stateSequence`, `TaskCancellationRequested.invocationId` and
+  `StepExecutionStatusChanged.invocationId` appended (record patterns: use type patterns). **Deploy the engine and
+  the IA agent runtime together; configure `workflow.agents.*` before importing definitions with AGENT steps.**
 - Own kafka-mode apps with triggers/`onEvent` need `inbound-events-kafka` (since 2.26).
 
 ## Canonical sources of truth (this repo)

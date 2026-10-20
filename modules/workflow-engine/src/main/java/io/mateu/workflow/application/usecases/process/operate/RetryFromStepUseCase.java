@@ -138,7 +138,7 @@ public class RetryFromStepUseCase {
                 continue;
             }
             if (stepExecution.getStatus().isInFlightAtAWorker()) {
-                downstreamEventPublisher.publish(new TaskCancellationRequested(stepExecution.getId()),
+                downstreamEventPublisher.publish(new TaskCancellationRequested(stepExecution.getId(), stepExecution.getInvocationId()),
                         stepExecution.topic());
                 var step = ProcessOperationRules.stepOf(stepExecution);
                 if (step != null && StepType.PROCESS.equals(step.type())) {
@@ -237,7 +237,7 @@ public class RetryFromStepUseCase {
     private void discardIterations(StepExecution container, List<StepExecution> steps, List<String> children) {
         for (var iteration : io.mateu.workflow.domain.services.StepExecutions.iterationsOf(container, steps)) {
             if (iteration.getStatus().isInFlightAtAWorker()) {
-                downstreamEventPublisher.publish(new TaskCancellationRequested(iteration.getId()), iteration.topic());
+                downstreamEventPublisher.publish(new TaskCancellationRequested(iteration.getId(), iteration.getInvocationId()), iteration.topic());
                 var step = ProcessOperationRules.stepOf(iteration);
                 if (step != null && StepType.PROCESS.equals(step.type())) {
                     children.add(iteration.getId());

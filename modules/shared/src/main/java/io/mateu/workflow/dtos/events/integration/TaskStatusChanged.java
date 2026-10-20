@@ -20,7 +20,13 @@ import java.util.List;
  *                  as before.
  */
 public record TaskStatusChanged(String taskExecutionId, TaskStatus status, List<Variable> variables,
-                                String processId, boolean nonRetryable, Integer attempt) implements DomainEvent {
+                                String processId, boolean nonRetryable, Integer attempt,
+                                @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+                                String invocationId,
+                                @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_DEFAULT)
+                                boolean reviewResolved,
+                                @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+                                Long stateSequence) implements DomainEvent {
 
     /** The shape before the attempt was echoed: the reply is applied without the attempt check. */
     public TaskStatusChanged(String taskExecutionId, TaskStatus status, List<Variable> variables,
@@ -45,6 +51,22 @@ public record TaskStatusChanged(String taskExecutionId, TaskStatus status, List<
      */
     public TaskStatusChanged(String taskExecutionId, TaskStatus status, List<Variable> variables) {
         this(taskExecutionId, status, variables, null, false, null);
+    }
+
+    public TaskStatusChanged(String taskExecutionId, TaskStatus status, List<Variable> variables,
+                             String processId, boolean nonRetryable, Integer attempt) {
+        this(taskExecutionId, status, variables, processId, nonRetryable, attempt, null, false, null);
+    }
+
+    public TaskStatusChanged(String taskExecutionId, TaskStatus status, List<Variable> variables,
+                             String processId, boolean nonRetryable, String invocationId,
+                             boolean reviewResolved, Long stateSequence) {
+        this(taskExecutionId, status, variables, processId, nonRetryable, null, invocationId, reviewResolved, stateSequence);
+    }
+
+    public TaskStatusChanged(String taskExecutionId, TaskStatus status, List<Variable> variables,
+                             String processId, boolean nonRetryable, String invocationId, boolean reviewResolved) {
+        this(taskExecutionId, status, variables, processId, nonRetryable, null, invocationId, reviewResolved, null);
     }
 
     @Override

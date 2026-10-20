@@ -40,7 +40,8 @@ public final class Templates {
 
     private static final JexlEngine JEXL = new JexlBuilder()
             .arithmetic(new LinearTimeRegexArithmetic(true))
-            .permissions(JexlPermissions.RESTRICTED)
+            .permissions(io.mateu.workflow.expression.JsonFunctions.PERMISSIONS)
+            .namespaces(io.mateu.workflow.expression.JsonFunctions.NAMESPACES)
             .features(FEATURES)
             .cache(512)
             .strict(false)

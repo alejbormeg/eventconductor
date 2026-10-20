@@ -110,6 +110,7 @@ Refused (errors):
 8. A held or queued lock the target would not keep.
 9. A human task that has fired more escalation levels than its target declares.
 10. A variable a re-armed step reads right now (a timer's `untilVariable`, a correlation expression, a lock key) that the process does not have and `variableMapping` does not give.
+11. An `AGENT` invocation in flight or under review: its outcome is the agent runtime's to give, and moving it would orphan it or dispatch it again. Wait for it, or cancel the process.
 
 Warnings: variables read by a step ready to run that the process does not have, compensable work dropped, re-dispatched tasks, steps recorded as passed, a `processLock` the target adds or drops.
 
