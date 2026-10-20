@@ -40,6 +40,19 @@ public final class SensitiveFixtures {
                 preconditionStepId: charge
             """;
 
+    /** An AGENT step whose prompt reads patient.* — refused without agent.allowSensitiveVariables. */
+    public static final String AGENT_STEP = """
+              - id: assess
+                type: AGENT
+                name: Assess
+                preconditionStepId: start
+                agent:
+                  ref: claims-assessor
+                  taskPrompt: "Assess the claim of ${patient.name}"
+                  input: {amount: "${amount}"}
+                  outputVariable: assessment
+            """;
+
     private SensitiveFixtures() {
     }
 

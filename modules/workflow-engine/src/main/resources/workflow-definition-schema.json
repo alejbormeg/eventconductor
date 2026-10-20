@@ -1855,6 +1855,13 @@
               "type": "string",
               "minLength": 1
             },
+            "allowSensitiveVariables": {
+              "type": [
+                "boolean",
+                "null"
+              ],
+              "description": "true to let taskPrompt and input read the definition's sensitiveVariables: they leave the engine for the agent runtime. Without it a definition whose agent reads one is refused at load."
+            },
             "mcp": {
               "type": [
                 "array",

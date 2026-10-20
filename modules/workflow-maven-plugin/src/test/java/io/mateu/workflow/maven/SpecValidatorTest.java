@@ -480,6 +480,34 @@ class SpecValidatorTest {
     }
 
     @Test
+    void anAgentStepReadingSensitiveVariablesNeedsTheOptInAsTheEngineDoes() throws Exception {
+        var mapper = new com.fasterxml.jackson.dataformat.yaml.YAMLMapper();
+        var refused = mapper.readTree("""
+                id: claims
+                name: Claims
+                sensitiveVariables: ["patient.*"]
+                steps:
+                  - {id: start, type: START, name: Start}
+                  - id: assess
+                    type: AGENT
+                    name: Assess
+                    preconditionStepId: start
+                    agent:
+                      ref: claims-assessor
+                      taskPrompt: "Assess claim ${claimId}"
+                      input: {claim: "${claimId}", records: ["${patient.history}"]}
+                      outputVariable: assessment
+                """);
+        assertThat(validator.validate(SpecValidator.Kind.WORKFLOW, refused))
+                .anySatisfy(v -> assertThat(v).contains("step 'assess'").contains("patient")
+                        .contains("agent.allowSensitiveVariables: true"));
+
+        ((com.fasterxml.jackson.databind.node.ObjectNode) refused.path("steps").get(1).path("agent"))
+                .put("allowSensitiveVariables", true);
+        assertThat(validator.validate(SpecValidator.Kind.WORKFLOW, refused)).isEmpty();
+    }
+
+    @Test
     void aRemovedStepTypeFailsTheBuildWithWhatToUseInstead() throws Exception {
         var mapper = new com.fasterxml.jackson.dataformat.yaml.YAMLMapper();
         var agent = mapper.readTree("""

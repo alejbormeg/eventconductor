@@ -39,6 +39,7 @@ class SensitiveVariableProtectionTest {
         // The engine's rendered requests embed values: sensitive whenever anything is.
         assertThat(names.test("__http")).isTrue();
         assertThat(names.test("__llm")).isTrue();
+        assertThat(names.test("__agent")).isTrue();
         // Registered: a step of the process resolves without loading it.
         assertThat(policies.ofProcessId("p1")).isEqualTo(names);
         assertThat(policies.ofProcessId(null)).isSameAs(SensitiveNames.NONE);

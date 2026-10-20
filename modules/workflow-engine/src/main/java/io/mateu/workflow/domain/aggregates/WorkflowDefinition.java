@@ -874,8 +874,9 @@ public record WorkflowDefinition(
 
     /**
      * The sensitive variables must be names or globs ({@code SensitiveVariableRules}); a step's
-     * {@code sensitiveOutputs} needs outputs; no search attribute may read one, and no LLM_CALL may put one
-     * in its prompt without {@code llm.allowSensitiveVariables: true}.
+     * {@code sensitiveOutputs} needs outputs; no search attribute may read one, no LLM_CALL may put one
+     * in its prompt without {@code llm.allowSensitiveVariables: true}, and no AGENT may put one in its
+     * taskPrompt or input without {@code agent.allowSensitiveVariables: true}.
      */
     private void checkSensitiveVariables() {
         var violations = new java.util.ArrayList<>(
@@ -925,6 +926,15 @@ public record WorkflowDefinition(
                     llm.put("allowSensitiveVariables", step.llm().allowSensitiveVariables());
                     violations.addAll(io.mateu.workflow.analysis.SensitiveVariableRules.llmViolations(
                             llm, sensitive, "step '" + step.id() + "'"));
+                }
+                for (var step : steps) {
+                    if (step == null || step.agent() == null || !StepType.AGENT.equals(step.type())) continue;
+                    var agent = new java.util.HashMap<String, Object>();
+                    agent.put("taskPrompt", step.agent().taskPrompt());
+                    agent.put("input", step.agent().input());
+                    agent.put("allowSensitiveVariables", step.agent().allowSensitiveVariables());
+                    violations.addAll(io.mateu.workflow.analysis.SensitiveVariableRules.agentViolations(
+                            agent, sensitive, "step '" + step.id() + "'"));
                 }
             }
         }

@@ -32,9 +32,10 @@ import java.util.regex.Pattern;
  *   <li>At most {@value #MAX_PATTERNS} patterns of at most {@value #MAX_PATTERN_LENGTH} characters, each
  *       once.</li>
  *   <li>A step's {@code sensitiveOutputs: true} needs {@code outputVariables} to protect.</li>
- *   <li>A search attribute may not read a sensitive variable (an index of plaintext would be a leak), and
- *       an LLM_CALL may not put one in its prompt unless it opts in with
- *       {@code llm.allowSensitiveVariables: true}.</li>
+ *   <li>A search attribute may not read a sensitive variable (an index of plaintext would be a leak), an
+ *       LLM_CALL may not put one in its prompt unless it opts in with
+ *       {@code llm.allowSensitiveVariables: true}, and an AGENT may not put one in its {@code taskPrompt} or
+ *       {@code input} unless it opts in with {@code agent.allowSensitiveVariables: true}.</li>
  * </ul>
  */
 public final class SensitiveVariableRules {
@@ -249,6 +250,38 @@ public final class SensitiveVariableRules {
         }
         return List.of(where + ": the prompt reads the sensitive variable(s) " + String.join(", ", read)
                 + "; an LLM_CALL only receives sensitive values with llm.allowSensitiveVariables: true");
+    }
+
+    /**
+     * An AGENT step whose {@code taskPrompt} or {@code input} reads a sensitive variable, refused unless the step
+     * opts in with {@code agent.allowSensitiveVariables: true}. The input is a template of any shape: every
+     * string in it, at any depth, is read as a template. What the agent receives leaves the engine for the agent
+     * runtime and, through it, a model and its tools — the same reason an LLM_CALL needs the opt-in.
+     */
+    public static List<String> agentViolations(Map<?, ?> agent, Predicate<String> sensitive, String where) {
+        if (agent == null || Boolean.TRUE.equals(agent.get("allowSensitiveVariables"))) {
+            return List.of();
+        }
+        var read = new LinkedHashSet<String>();
+        if (agent.get("taskPrompt") instanceof String template) {
+            read.addAll(templateReferences(template, sensitive));
+        }
+        collectTemplateReferences(agent.get("input"), sensitive, read);
+        if (read.isEmpty()) {
+            return List.of();
+        }
+        return List.of(where + ": the agent's taskPrompt or input reads the sensitive variable(s) " + String.join(", ", read)
+                + "; an AGENT only receives sensitive values with agent.allowSensitiveVariables: true");
+    }
+
+    private static void collectTemplateReferences(Object value, Predicate<String> sensitive, Set<String> found) {
+        if (value instanceof String template) {
+            found.addAll(templateReferences(template, sensitive));
+        } else if (value instanceof Map<?, ?> map) {
+            map.values().forEach(child -> collectTemplateReferences(child, sensitive, found));
+        } else if (value instanceof Collection<?> list) {
+            list.forEach(child -> collectTemplateReferences(child, sensitive, found));
+        }
     }
 
     /**

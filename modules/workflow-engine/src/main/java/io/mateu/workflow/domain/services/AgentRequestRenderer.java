@@ -20,6 +20,17 @@ public final class AgentRequestRenderer {
                 || agent.outputVariable() == null || agent.outputVariable().isBlank()) {
             throw new IllegalArgumentException("AGENT requires agent.ref and agent.outputVariable");
         }
+        // What the agent gets leaves the engine for its runtime (and a model, and its tools): sensitive variables
+        // stay out of the context unless the step opts in (agent.allowSensitiveVariables), as for an LLM_CALL. A
+        // template naming one is refused at load; this also keeps them out of one that reaches them indirectly.
+        if (!Boolean.TRUE.equals(agent.allowSensitiveVariables())) {
+            var sensitive = io.mateu.workflow.application.services.SensitiveVariableMasking.namesOf(process);
+            if (!sensitive.isEmpty() && process.getVariables() != null) {
+                process = process.withVariables(process.getVariables().stream()
+                        .filter(variable -> variable == null || !sensitive.test(variable.name()))
+                        .toList());
+            }
+        }
         var context = TemplateContext.of(process, step, stepExecutionId);
         var payload = new LinkedHashMap<String, Object>();
         payload.put("schemaVersion", 1);

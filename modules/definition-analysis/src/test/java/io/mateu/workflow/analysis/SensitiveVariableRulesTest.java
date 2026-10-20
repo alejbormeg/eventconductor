@@ -112,6 +112,30 @@ class SensitiveVariableRulesTest {
     }
 
     @Test
+    void anAgentReadingASensitiveVariableInItsPromptOrAnywhereInItsInputNeedsTheOptIn() {
+        var sensitive = SensitiveVariableRules.matcher(List.of("cardNumber", "patient.*"));
+        Map<String, Object> agent = new LinkedHashMap<>();
+        agent.put("ref", "claims-assessor");
+        agent.put("taskPrompt", "Assess claim ${claimId}");
+        agent.put("input", Map.of("claim", "${claimId}", "amounts", List.of("${amount}")));
+        assertThat(SensitiveVariableRules.agentViolations(agent, sensitive, "step 'assess'")).isEmpty();
+
+        agent.put("input", Map.of("claim", "${claimId}", "nested", List.of(Map.of("history", "${patient.history}"))));
+        assertThat(SensitiveVariableRules.agentViolations(agent, sensitive, "step 'assess'"))
+                .singleElement().asString().contains("step 'assess'").contains("patient")
+                .contains("agent.allowSensitiveVariables: true");
+
+        agent.put("input", Map.of());
+        agent.put("taskPrompt", "Charge ${cardNumber}");
+        assertThat(SensitiveVariableRules.agentViolations(agent, sensitive, "step 'assess'"))
+                .singleElement().asString().contains("cardNumber");
+
+        agent.put("allowSensitiveVariables", true);
+        assertThat(SensitiveVariableRules.agentViolations(agent, sensitive, "step 'assess'")).isEmpty();
+        assertThat(SensitiveVariableRules.agentViolations(null, sensitive, "x")).isEmpty();
+    }
+
+    @Test
     void aMigrationWarnsWhenSensitivityChanges() {
         var forProcess = MigrationRules.sensitivityProblems(List.of("pin"), List.of("cardNumber", "patient.*"),
                 List.of("cardNumber", "pin", "patient", "amount"));

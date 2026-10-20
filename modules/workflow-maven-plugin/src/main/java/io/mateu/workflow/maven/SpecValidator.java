@@ -319,6 +319,13 @@ public class SpecValidator {
                     violations.addAll(io.mateu.workflow.analysis.SensitiveVariableRules.llmViolations(
                             llmMap, sensitive, "step '" + text(step, "id") + "'"));
                 }
+                JsonNode agent = step.get("agent");
+                if (agent != null && agent.isObject() && "AGENT".equals(text(step, "type"))) {
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> agentMap = mapper.convertValue(agent, LinkedHashMap.class);
+                    violations.addAll(io.mateu.workflow.analysis.SensitiveVariableRules.agentViolations(
+                            agentMap, sensitive, "step '" + text(step, "id") + "'"));
+                }
             }
         }
     }

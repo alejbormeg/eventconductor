@@ -127,6 +127,33 @@ abstract class SensitiveVariablesStorageContract {
     }
 
     @Test
+    void anAgentStepsRenderedRequestIsSealedInItsRowAndItsDispatch() {
+        var definition = SensitiveFixtures.definition(SensitiveFixtures.DEFINITION
+                + SensitiveFixtures.AGENT_STEP
+                        .replace("ref: claims-assessor", "ref: claims-assessor\n      allowSensitiveVariables: true")
+                        .replace("{amount: \"${amount}\"}", "{card: \"${cardNumber}\"}"));
+        var process = io.mateu.workflow.domain.aggregates.Process.create("p4", definition, "bk-4",
+                List.of(new Variable("cardNumber", CARD), new Variable("patient", "{\"name\":\"Ana\"}")));
+        processes.save(process);
+        var step = definition.steps().stream().filter(s -> "assess".equals(s.id())).findFirst().orElseThrow();
+        var execution = StepExecution.create(step, "p4", 1).start(process);
+        assertThat(execution.getAgentRequest()).contains(CARD);
+        steps.save(execution);
+
+        var raw = jdbc.queryForMap("select variables, agent_request from step_execution_entity where id = ?", execution.id());
+        assertThat(String.valueOf(raw.get("agent_request"))).startsWith(VariableEnvelope.PREFIX).doesNotContain(CARD);
+        assertThat(String.valueOf(raw.get("variables"))).doesNotContain(CARD).contains("\"__agent\"");
+        // The dispatch in the outbox carries __agent sealed, as __http and __llm.
+        var payloads = jdbc.queryForList("select payload from outbox_message_entity", String.class);
+        assertThat(payloads).anySatisfy(payload -> assertThat(payload).contains("run-agent@1"));
+        assertThat(payloads).allSatisfy(payload -> assertThat(payload).doesNotContain(CARD));
+
+        var read = steps.findById(execution.id()).orElseThrow();
+        assertThat(read.getAgentRequest()).isEqualTo(execution.getAgentRequest());
+        assertThat(read.getVariables()).singleElement().satisfies(v -> assertThat(v.value()).contains(CARD));
+    }
+
+    @Test
     void aProcessThatDeclaresNothingIsStoredAsBefore() {
         var plain = SensitiveFixtures.definition().withSensitiveVariables(null).withSteps(List.of());
         processes.save(io.mateu.workflow.domain.aggregates.Process.create("p3", plain, "bk-3",

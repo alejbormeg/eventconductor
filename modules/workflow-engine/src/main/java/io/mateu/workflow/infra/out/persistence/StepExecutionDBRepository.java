@@ -70,7 +70,7 @@ public class StepExecutionDBRepository implements StepExecutionRepository {
                 entity.getAwaitingCorrelationKey(),
                 entity.getVersion(),
                 entity.getInjectedByStepExecutionId(),
-                entity.getInvocationId(), entity.getAgentRequest(), entity.getAgentHoldReason(), entity.getLastAgentStateSequence(), entity.isFailureNonRetryable(),
+                entity.getInvocationId(), protection().openBlob(entity.getAgentRequest()), entity.getAgentHoldReason(), entity.getLastAgentStateSequence(), entity.isFailureNonRetryable(),
                 entity.getDispatchCount() == null ? 0 : entity.getDispatchCount(),
                 // Loops and forEach (V47): rows written before read as the first pass of an ordinary step.
                 entity.getIteration() == null ? 0 : entity.getIteration(),
@@ -107,7 +107,10 @@ public class StepExecutionDBRepository implements StepExecutionRepository {
                 null, null,
                 stepExecution.getVersion(),
                 stepExecution.getInjectedByStepExecutionId(),
-                stepExecution.getInvocationId(), stepExecution.getAgentRequest(), stepExecution.getAgentHoldReason(), stepExecution.getLastAgentStateSequence(), stepExecution.isFailureNonRetryable()
+                stepExecution.getInvocationId(),
+                // The rendered agent request embeds whatever taskPrompt and input read: sealed whole, like a forEach scope.
+                protection().sealBlob(stepExecution.getAgentRequest(), sensitive),
+                stepExecution.getAgentHoldReason(), stepExecution.getLastAgentStateSequence(), stepExecution.isFailureNonRetryable()
         );
         entity.setDispatchCount(stepExecution.getDispatchCount());
         entity.setIteration(stepExecution.getIteration());
