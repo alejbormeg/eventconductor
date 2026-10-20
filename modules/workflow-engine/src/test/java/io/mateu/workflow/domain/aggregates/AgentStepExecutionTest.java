@@ -63,4 +63,21 @@ class AgentStepExecutionTest {
         assertThat(execution.getStatus().isTerminal()).isFalse();
         assertThatThrownBy(execution::resetForRerun).hasMessageContaining("Reconcile");
     }
+
+    @Test void deadlineSentToTheRuntimeIsTheEngineClocksMomentInItsOwnZone() throws Exception {
+        // A zone far from any CI machine's: reading the deadline in the JVM's zone would shift it by hours.
+        var tokyo = java.time.ZoneId.of("Asia/Tokyo");
+        var at = java.time.Instant.parse("2026-03-01T00:00:00Z");
+        io.mateu.workflow.time.EngineClock.set(java.time.Clock.fixed(at, tokyo));
+        try {
+            var execution = StepExecution.create(step(), "p", 1).start(process("case-1"));
+            var request = (TaskExecutionRequested) execution.popEvents().stream()
+                    .filter(TaskExecutionRequested.class::isInstance).findFirst().orElseThrow();
+            var payload = new ObjectMapper().readTree(request.variables().getFirst().value());
+            assertThat(java.time.Instant.parse(payload.path("deadlineAt").asText()))
+                    .isEqualTo(at.plus(java.time.Duration.ofMinutes(5)));
+        } finally {
+            io.mateu.workflow.time.EngineClock.reset();
+        }
+    }
 }

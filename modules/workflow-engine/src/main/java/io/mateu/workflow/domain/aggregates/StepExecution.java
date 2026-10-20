@@ -843,7 +843,9 @@ public final class StepExecution extends AggregateRoot implements Identifiable {
             try {
                 if (invocationId == null) invocationId = UUID.randomUUID().toString();
                 if (agentRequest == null) {
-                    var deadline = deadlineAt == null ? null : deadlineAt.atZone(java.time.ZoneId.systemDefault())
+                    // deadlineAt is engine time (EngineClock.now()), so it is read in the engine clock's zone —
+                    // not the JVM's, which a test clock or a container's TZ can set apart from it.
+                    var deadline = deadlineAt == null ? null : deadlineAt.atZone(EngineClock.zone())
                             .toInstant().toString();
                     var payload = io.mateu.workflow.domain.services.AgentRequestRenderer.render(step, process, id, deadline);
                     var digest = java.security.MessageDigest.getInstance("SHA-256").digest(

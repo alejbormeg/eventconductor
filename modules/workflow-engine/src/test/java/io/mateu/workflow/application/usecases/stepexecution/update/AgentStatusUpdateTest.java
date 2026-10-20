@@ -5,6 +5,8 @@ import io.mateu.workflow.application.out.*;
 import io.mateu.workflow.application.services.MessageSubscriptionService;
 import io.mateu.workflow.domain.aggregates.*;
 import io.mateu.workflow.domain.aggregates.Process;
+import io.mateu.workflow.time.EngineClock;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import java.time.LocalDateTime;
@@ -25,13 +27,19 @@ class AgentStatusUpdateTest {
             mock(LogMessageRepository.class), processes, locks, mock(MessageSubscriptionService.class), mock(WorkflowMetrics.class),
             mock(io.mateu.workflow.application.services.AutoRetryService.class));
 
+    /** Business time is the engine clock's: pinned, so the renewed budget is checked exactly, not against the wall. */
+    private static final LocalDateTime NOW = LocalDateTime.of(2026, 3, 1, 9, 0);
+
+    @AfterEach void resetClock() { EngineClock.reset(); }
+
     @BeforeEach void setup() {
+        EngineClock.set(java.time.Clock.fixed(NOW.toInstant(java.time.ZoneOffset.UTC), java.time.ZoneOffset.UTC));
         var step = new Step("assess", "synthetic", StepType.AGENT, "Assess", null, null, null, null,
                 false, null, null, null, null, null, 0, null, null, null, null, 0, 0, false, null, 0, null)
                 .withAgent(new AgentCall("synthetic-assessor", null, null, null, null, null, "assessment"))
                 .withOnTimeoutStepId("timeout");
         execution.set(StepExecution.builder().id("s").processId("p").stepId("assess").invocationId("i")
-                .stepJson(JsonSerializer.toJson(step)).startedAt(LocalDateTime.now()).status(StepExecutionStatus.PENDING).build());
+                .stepJson(JsonSerializer.toJson(step)).startedAt(EngineClock.now()).status(StepExecutionStatus.PENDING).build());
         process.set(Process.builder().id("p").variables(List.of(new Variable("original", "keep"))).status(ProcessStatus.RUNNING).build());
         when(steps.findById("s")).thenAnswer(call -> Optional.of(execution.get()));
         when(steps.findByProcessId("p")).thenAnswer(call -> List.of(execution.get()));
@@ -47,12 +55,12 @@ class AgentStatusUpdateTest {
     @Test void reconciliationRenewsTimeoutAndOldReviewCannotRepauseTheProcess() {
         report(StepExecutionStatus.REVIEW_REQUIRED, 10, false);
         assertThat(process.get().getStatus()).isEqualTo(ProcessStatus.PAUSED);
-        execution.set(execution.get().withStartedAt(LocalDateTime.now().minusHours(2)));
+        execution.set(execution.get().withStartedAt(NOW.minusHours(2)));
         report(StepExecutionStatus.RUNNING, 11, false);
         assertThat(execution.get().getStatus()).isEqualTo(StepExecutionStatus.REVIEW_REQUIRED);
         report(StepExecutionStatus.RUNNING, 11, true);
         assertThat(process.get().getStatus()).isEqualTo(ProcessStatus.RUNNING);
-        assertThat(execution.get().getDeadlineAt()).isAfter(LocalDateTime.now().plusMinutes(4));
+        assertThat(execution.get().getDeadlineAt()).isEqualTo(NOW.plusMinutes(5));
         report(StepExecutionStatus.REVIEW_REQUIRED, 10, false);
         assertThat(execution.get().getStatus()).isEqualTo(StepExecutionStatus.RUNNING);
         report(StepExecutionStatus.REVIEW_REQUIRED, 12, false);
