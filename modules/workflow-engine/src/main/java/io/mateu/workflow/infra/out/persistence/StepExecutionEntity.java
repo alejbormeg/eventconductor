@@ -106,11 +106,18 @@ public class StepExecutionEntity {
      */
     String injectedByStepExecutionId;
 
+    /** AGENT: the invocation id, stable across redeliveries; null for every other step (V57). */
+    @Column(length = 255)
     String invocationId;
+    /** AGENT: the request rendered once before the first dispatch; sealed when the process has sensitive variables (V57). */
     @Column(columnDefinition = "TEXT")
     String agentRequest;
+    /** AGENT: why the invocation is held for review — TIMEOUT, CANCELLED, END — or null (V57). */
+    @Column(length = 255)
     String agentHoldReason;
+    /** AGENT: the last state sequence accepted from the runtime (V57). */
     Long lastAgentStateSequence;
+    /** Whether the step's failure was final, kept while another branch's review holds the retry decision (V57). */
     @Column(nullable = false)
     boolean failureNonRetryable;
 

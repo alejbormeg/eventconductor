@@ -95,7 +95,8 @@ public class ProcessEntity {
     /** The business key of a run that handed it over to a later run; null while it holds it (V56). */
     private String releasedBusinessKey;
 
-    /** Audit only: the stable subject that started the process; never a credential. */
+    /** Audit only: the stable subject that started the process; never a credential (V57). */
+    @Column(length = 255)
     private String initiatingActor;
 
     /** The row before CONTINUE_AS_NEW (V56): no links. */
