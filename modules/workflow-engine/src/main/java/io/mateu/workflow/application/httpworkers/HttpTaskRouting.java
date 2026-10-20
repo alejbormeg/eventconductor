@@ -12,8 +12,9 @@ import java.util.stream.Collectors;
 /**
  * Which tasks are served over HTTP: those whose step topic is listed in
  * {@code workflow.workers.http.topics}, or — with {@code *} — every topic except the built-in tasks
- * (USER_TASK, RULE, HTTP_CALL, LLM_CALL), whose own runtimes keep serving them unless their topic is
- * named explicitly.
+ * (USER_TASK, RULE, HTTP_CALL, LLM_CALL, AGENT), whose own runtimes keep serving them unless their topic is
+ * named explicitly. AGENT's {@code agent-calls} is the agent runtime's: an HTTP worker would have to echo the
+ * invocation id, which the HTTP task protocol does not carry.
  */
 public final class HttpTaskRouting {
 
@@ -21,11 +22,12 @@ public final class HttpTaskRouting {
 
     /** The task ids the engine itself gives the built-in step types. */
     static final Set<String> BUILT_IN_TASK_IDS = Set.of("complete-form", "evaluate-rule",
-            HttpRequestRenderer.TASK_ID, LlmRequestRenderer.TASK_ID);
+            HttpRequestRenderer.TASK_ID, LlmRequestRenderer.TASK_ID,
+            io.mateu.workflow.domain.services.AgentRequestRenderer.TASK_ID);
 
     /** The default topics of the built-in tasks that have one of their own. */
     static final Set<String> BUILT_IN_TOPICS = Set.of(HttpRequestRenderer.DEFAULT_TOPIC,
-            LlmRequestRenderer.DEFAULT_TOPIC);
+            LlmRequestRenderer.DEFAULT_TOPIC, io.mateu.workflow.domain.services.AgentRequestRenderer.TOPIC);
 
     private final Set<String> explicit;
     private final boolean all;
