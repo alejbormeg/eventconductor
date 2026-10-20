@@ -19,6 +19,18 @@ public class E2eConfig {
         return new TestWorker(updateStepExecution);
     }
 
+    /**
+     * The published agents AGENT steps are validated against at import — never a real catalogue in a test.
+     * {@code claims-assessor} may use the {@code crm} MCP server and nothing else.
+     */
+    @Bean
+    public io.mateu.workflow.application.out.WorkflowAgentCatalogue workflowAgentCatalogue() {
+        var agents = java.util.List.of(new io.mateu.workflow.application.out.WorkflowAgentCatalogue.Agent(
+                "claims-assessor", "Claims assessor", "Assesses an insurance claim", java.util.List.of("crm"),
+                java.util.List.of(), java.util.List.of(), java.util.Map.of("type", "object"), "rev-1"));
+        return () -> agents;
+    }
+
     @Bean
     public PublishedEvents publishedEvents() {
         return new PublishedEvents();

@@ -278,7 +278,7 @@ public class MigrateProcessUseCase {
 
     /** Tells the worker to stop; a PROCESS step's running child is cancelled once the lock is released. */
     private void stopTask(StepExecution execution, List<String> children) {
-        downstreamEventPublisher.publish(new TaskCancellationRequested(execution.getId()), execution.topic());
+        downstreamEventPublisher.publish(new TaskCancellationRequested(execution.getId(), execution.getInvocationId()), execution.topic());
         var step = ProcessOperationRules.stepOf(execution);
         if (step != null && StepType.PROCESS.equals(step.type())) {
             children.add(execution.getId());

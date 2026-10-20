@@ -847,7 +847,7 @@ public final class StepExecution extends AggregateRoot implements Identifiable {
                     // not the JVM's, which a test clock or a container's TZ can set apart from it.
                     var deadline = deadlineAt == null ? null : deadlineAt.atZone(EngineClock.zone())
                             .toInstant().toString();
-                    var payload = io.mateu.workflow.domain.services.AgentRequestRenderer.render(step, process, id, deadline);
+                    var payload = io.mateu.workflow.domain.services.AgentRequestRenderer.render(step, process, id, deadline, typedScope);
                     var digest = java.security.MessageDigest.getInstance("SHA-256").digest(
                             toJson(payload).getBytes(java.nio.charset.StandardCharsets.UTF_8));
                     payload.put("requestDigest", java.util.HexFormat.of().formatHex(digest));

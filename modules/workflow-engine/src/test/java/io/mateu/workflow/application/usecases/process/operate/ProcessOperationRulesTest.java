@@ -108,6 +108,41 @@ class ProcessOperationRulesTest {
                 .containsExactly(container);
     }
 
+    @Test
+    void anAgentUnderReviewHoldsEveryOperationThatMovesAStepAndOneInFlightIsNotMovedByHand() {
+        var paused = process(ProcessStatus.PAUSED);
+        var start = se("start", "START", Map.of(), StepExecutionStatus.COMPLETED);
+        var other = se("other", "ACTION", Map.of("preconditionStepId", "start"), StepExecutionStatus.ERROR);
+        var held = agent("assess", StepExecutionStatus.REVIEW_REQUIRED);
+        var underReview = List.of(start, other, held);
+
+        assertThat(rules.whyNotCompleteStep(paused, other, underReview)).contains("'assess' is under review");
+        assertThatThrownBy(() -> rules.planRetryFrom(paused, "other", underReview)).hasMessageContaining("under review");
+        assertThat(rules.whyNotSetVariables(paused)).as("setting variables moves no step").isNull();
+        assertThat(ProcessOperationRules.agentUnderReview(List.of(start, other))).isNull();
+
+        var running = process(ProcessStatus.RUNNING);
+        var inFlight = agent("assess", StepExecutionStatus.RUNNING);
+        var flying = List.of(start, inFlight);
+        assertThat(rules.whyNotCompleteStep(running, inFlight, flying)).contains("in flight");
+        assertThatThrownBy(() -> rules.planRetryFrom(running, "start", flying)).hasMessageContaining("in flight");
+        // A forEach container is not completed by hand while one of its AGENT iterations is out.
+        var container = se("each", "AGENT", Map.of(), StepExecutionStatus.PENDING);
+        var iteration = agent("each", StepExecutionStatus.PENDING).toBuilder().id("se-each-0")
+                .parentExecutionId(container.getId()).itemIndex(0).build();
+        assertThat(rules.whyNotCompleteStep(running, container, List.of(start, container, iteration))).contains("in flight");
+        // Once the invocation has a known outcome it is an ordinary failed step.
+        var failedAgent = agent("assess", StepExecutionStatus.ERROR);
+        assertThat(rules.whyNotCompleteStep(process(ProcessStatus.ERROR), failedAgent, List.of(start, failedAgent))).isNull();
+        // A step with no invocation (any other type) is never in flight as far as these rules go.
+        assertThat(ProcessOperationRules.agentInFlight(List.of(se("a", "ACTION", Map.of(), StepExecutionStatus.RUNNING))))
+                .isNull();
+    }
+
+    static StepExecution agent(String id, StepExecutionStatus status) {
+        return se(id, "AGENT", Map.of("preconditionStepId", "start"), status).toBuilder().invocationId("inv-" + id).build();
+    }
+
     static Process process(ProcessStatus status) {
         return Process.builder().id("p").workflowDefinitionId("w").status(status).variables(List.of()).build();
     }

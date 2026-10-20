@@ -1,0 +1,20 @@
+id: agent-claims
+name: Assess a claim with a published agent
+version: 1
+updates:
+  - name: addNote
+    accepts: {type: object, required: [note]}
+    set: {note: "payload.note"}
+steps:
+  - { id: start, type: START, name: Start }
+  - id: assess
+    type: AGENT
+    name: Assess the claim
+    preconditionStepId: start
+    agent:
+      ref: claims-assessor
+      taskPrompt: "Assess claim ${claimId}"
+      input: {claimId: "${claimId}", amount: "${amount}"}
+      mcp: [crm]
+      outputVariable: assessment
+  - { id: end, type: END, name: End, preconditionStepId: assess }

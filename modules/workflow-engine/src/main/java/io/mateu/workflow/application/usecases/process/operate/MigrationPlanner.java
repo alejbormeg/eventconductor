@@ -123,7 +123,30 @@ public class MigrationPlanner {
                 source == null || source.processLock() == null ? null : generic(toJson(source.processLock())),
                 targetSteps, target.processLock() == null ? null : generic(toJson(target.processLock())),
                 stepMapping, variableMapping, states, facts));
-        return new Planned(source, target, withSensitivity(plan, source, target, process, variableMapping));
+        return new Planned(source, target, withAgentInvocations(
+                withSensitivity(plan, source, target, process, variableMapping), executions));
+    }
+
+    /**
+     * A refusal while an AGENT invocation is under review or in flight: its outcome is the runtime's to give,
+     * correlated by its invocation id, and moving it to another definition would orphan it or re-dispatch it
+     * beside itself. Wait for it to finish (or cancel the process).
+     */
+    private static MigrationRules.Plan withAgentInvocations(MigrationRules.Plan plan, List<StepExecution> executions) {
+        var why = ProcessOperationRules.agentUnderReview(executions);
+        if (why == null) {
+            why = ProcessOperationRules.agentInFlight(executions);
+        }
+        if (why == null) {
+            return plan;
+        }
+        var problems = new ArrayList<>(plan.problems());
+        var stepId = executions.stream().filter(se -> se.getInvocationId() != null
+                        && (StepExecutionStatus.REVIEW_REQUIRED.equals(se.getStatus())
+                        || (se.getStatus() != null && se.getStatus().isInFlightAtAWorker())))
+                .map(StepExecution::getStepId).findFirst().orElse(null);
+        problems.add(new MigrationRules.Problem(MigrationRules.Severity.ERROR, stepId, why));
+        return new MigrationRules.Plan(plan.mapping(), plan.steps(), List.copyOf(problems));
     }
 
     /**

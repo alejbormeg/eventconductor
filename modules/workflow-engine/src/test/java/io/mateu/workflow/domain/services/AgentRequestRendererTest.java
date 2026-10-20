@@ -32,4 +32,18 @@ class AgentRequestRendererTest {
         var allowed = AgentRequestRenderer.render(step(true), process, "se-1", null);
         assertThat(allowed.toString()).contains(CARD);
     }
+
+    @Test
+    void anIterationReadsItsTypedScope() {
+        var process = SensitiveFixtures.process("p-2");
+        var step = step(null).withAgent(new AgentCall("claims-assessor", "Claim ${claim.id} (${index})", null,
+                null, null, null, "assessment"));
+
+        var request = AgentRequestRenderer.render(step, process, "se-2", "2026-03-01T00:05:00Z",
+                Map.of("claim", Map.of("id", "C-9"), "index", 2));
+
+        assertThat(request.get("taskPrompt")).isEqualTo("Claim C-9 (2)");
+        assertThat(request.get("input")).isEqualTo(Map.of());
+        assertThat(request.get("deadlineAt")).isEqualTo("2026-03-01T00:05:00Z");
+    }
 }

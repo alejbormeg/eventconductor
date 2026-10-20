@@ -108,7 +108,7 @@ public class CompleteStepManuallyUseCase {
                 continue;
             }
             if (iteration.getStatus().isInFlightAtAWorker()) {
-                downstreamEventPublisher.publish(new TaskCancellationRequested(iteration.getId()), iteration.topic());
+                downstreamEventPublisher.publish(new TaskCancellationRequested(iteration.getId(), iteration.getInvocationId()), iteration.topic());
             }
             iteration.cancelQuietly();
             stepExecutionRepository.save(iteration);
@@ -145,7 +145,7 @@ public class CompleteStepManuallyUseCase {
 
         var wasStatus = target.getStatus();
         if (wasStatus.isInFlightAtAWorker()) {
-            downstreamEventPublisher.publish(new TaskCancellationRequested(target.getId()), target.topic());
+            downstreamEventPublisher.publish(new TaskCancellationRequested(target.getId(), target.getInvocationId()), target.topic());
         }
 
         // Reopen a failed process before its step is completed — the status pipeline the completion

@@ -41,6 +41,21 @@ import static io.mateu.core.infra.JsonSerializer.pojoFromJson;
  *       Setting variables is the exception, and is allowed: it moves no step.</li>
  * </ul>
  *
+ * <h2>AGENT invocations</h2>
+ *
+ * <p>An AGENT step's invocation has effects outside the engine (its runtime, a model, the tools it calls),
+ * and its outcome is known only when its runtime says so, correlated by the invocation id. So:
+ *
+ * <ul>
+ *   <li>While any AGENT invocation of the process is <b>under review</b> (REVIEW_REQUIRED, the process
+ *       PAUSED), no operation that moves a step is carried out — completing a step by hand, retrying from a
+ *       step, migrating: only the runtime's correlated reconciliation releases the hold. Setting variables is
+ *       allowed (it moves no step, and the agent's request was rendered and pinned before dispatch).</li>
+ *   <li>An AGENT invocation <b>in flight</b> (PENDING, RUNNING) is not completed, reset or re-dispatched by
+ *       hand: its outcome would be unknown, and a second invocation would run beside it. Cancelling the
+ *       process is the way to stop it — the cancellation waits for the runtime to confirm.</li>
+ * </ul>
+ *
  * <h2>Loops and forEach</h2>
  *
  * <p>The operations reason over the process's <b>current</b> executions, as the orchestrator does
@@ -79,6 +94,16 @@ public class ProcessOperationRules {
         var notLive = live(process);
         if (notLive != null) {
             return notLive;
+        }
+        var review = agentUnderReview(steps);
+        if (review != null) {
+            return review;
+        }
+        // The step itself, or — for a forEach container — any of its iterations.
+        var inFlight = agentInFlight(steps.stream().filter(se -> se.getId().equals(target.getId())
+                || target.getId().equals(se.getParentExecutionId())).toList());
+        if (inFlight != null) {
+            return inFlight;
         }
         if (rollbackUnderway(process, steps)) {
             return "its saga rollback is under way";
@@ -138,6 +163,10 @@ public class ProcessOperationRules {
         if (rollbackUnderway(process, allSteps)) {
             throw new Refused("its saga rollback is under way");
         }
+        var review = agentUnderReview(allSteps);
+        if (review != null) {
+            throw new Refused(review);
+        }
         if (targets.stream().anyMatch(target -> isCompensation(target, steps))) {
             throw new Refused("step '" + stepId + "' is a compensation, which only the saga rollback runs");
         }
@@ -164,6 +193,12 @@ public class ProcessOperationRules {
             // failed process left every queue when it failed, so this only concerns a live one.
             throw new Refused("a step downstream of '" + stepId + "' is waiting in a lock queue; wait for it or retry"
                     + " from a step after it");
+        }
+        var reopened = executions.stream().map(StepExecution::getId).collect(java.util.stream.Collectors.toSet());
+        var inFlight = agentInFlight(allSteps.stream().filter(se -> reopened.contains(se.getId())
+                || reopened.contains(se.getParentExecutionId())).toList());
+        if (inFlight != null) {
+            throw new Refused(inFlight);
         }
         return new RetryPlan(stepIds, executions);
     }
@@ -222,6 +257,33 @@ public class ProcessOperationRules {
             return "only a RUNNING, PAUSED or ERROR process is operated on by hand";
         }
         return null;
+    }
+
+    /**
+     * Why the process's AGENT invocations hold every operation that moves a step: one of them is under review
+     * (REVIEW_REQUIRED). Null when none is.
+     */
+    public static String agentUnderReview(List<StepExecution> steps) {
+        return steps.stream()
+                .filter(se -> StepExecutionStatus.REVIEW_REQUIRED.equals(se.getStatus()) && !se.isSuperseded())
+                .findFirst()
+                .map(se -> "the AGENT invocation of step '" + se.getStepId() + "' is under review (REVIEW_REQUIRED);"
+                        + " only its runtime's correlated reconciliation releases it")
+                .orElse(null);
+    }
+
+    /**
+     * Why these executions cannot be completed, reset or re-dispatched by hand: one of them is an AGENT
+     * invocation in flight (PENDING, RUNNING). Null when none is.
+     */
+    public static String agentInFlight(List<StepExecution> executions) {
+        return executions.stream()
+                .filter(se -> se.getInvocationId() != null && se.getStatus() != null
+                        && se.getStatus().isInFlightAtAWorker() && !se.isSuperseded())
+                .findFirst()
+                .map(se -> "the AGENT invocation of step '" + se.getStepId() + "' is in flight; its runtime completes,"
+                        + " fails or holds it — cancel the process to stop it")
+                .orElse(null);
     }
 
     /** A failed process whose saga rollback has a compensation still to run or in flight. */

@@ -87,8 +87,16 @@ public class RestartProcessUseCase {
         }
 
         var stepExecutions = stepExecutionRepository.findByProcess(process);
-        if (stepExecutions.stream().anyMatch(step -> step.getStatus()
-                == io.mateu.workflow.domain.aggregates.StepExecutionStatus.REVIEW_REQUIRED)) return;
+        // An AGENT invocation under review, or still in flight, has an outcome only its runtime can give: a
+        // restart would orphan it and dispatch a second one beside it (see ProcessOperationRules).
+        var heldByAgent = io.mateu.workflow.application.usecases.process.operate.ProcessOperationRules.agentUnderReview(stepExecutions);
+        if (heldByAgent == null) {
+            heldByAgent = io.mateu.workflow.application.usecases.process.operate.ProcessOperationRules.agentInFlight(stepExecutions);
+        }
+        if (heldByAgent != null) {
+            log.warn("Process {} cannot be restarted now: {} — ignoring", process.getId(), heldByAgent);
+            return;
+        }
         // Read before resetting: the reset is what clears the startedAt this reads.
         var initialVariables = variablesTheProcessStartedWith(stepExecutions);
 
@@ -99,7 +107,7 @@ public class RestartProcessUseCase {
                 // that does not honour cancellation can still answer, the reset below also moves
                 // the step to a new dispatch, so that late answer is dropped rather than taken for
                 // the re-run's result.
-                downstreamEventPublisher.publish(new TaskCancellationRequested(stepExecution.getId()),
+                downstreamEventPublisher.publish(new TaskCancellationRequested(stepExecution.getId(), stepExecution.getInvocationId()),
                         stepExecution.topic());
             }
             if (io.mateu.workflow.domain.services.StepExecutions.isCurrent(stepExecution)) {

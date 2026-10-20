@@ -70,6 +70,25 @@ class RestartProcessUseCaseTest {
     }
 
     @Test
+    void anAgentInvocationUnderReviewOrInFlightIsNotRestartedAway() {
+        var process = Process.builder().id("p-1").status(ProcessStatus.ERROR).variables(List.of()).build();
+        var failed = step("s1", 1, StepExecutionStatus.ERROR, LocalDateTime.now(), List.of());
+        when(processRepository.findById("p-1")).thenReturn(Optional.of(process));
+
+        for (var status : List.of(StepExecutionStatus.REVIEW_REQUIRED, StepExecutionStatus.RUNNING)) {
+            var agent = step("s2", 2, status, LocalDateTime.now(), List.of()).toBuilder().invocationId("inv-1").build();
+            when(stepExecutionRepository.findByProcess(any())).thenReturn(List.of(failed, agent));
+
+            restartProcessUseCase.handle(new RestartProcessCommand("p-1"));
+
+            assertThat(agent.getStatus()).isEqualTo(status);
+            assertThat(agent.getInvocationId()).isEqualTo("inv-1");
+            assertThat(failed.getStatus()).isEqualTo(StepExecutionStatus.ERROR);
+        }
+        verify(downstreamEventPublisher, never()).publish(any(), any());
+    }
+
+    @Test
     void putsEveryStepBackIncludingTheOnesThatSucceeded() {
         var process = Process.builder().id("p-1").status(ProcessStatus.ERROR)
                 .variables(List.of(new Variable("total", "99"))).build();

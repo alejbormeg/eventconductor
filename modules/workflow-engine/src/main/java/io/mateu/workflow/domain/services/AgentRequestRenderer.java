@@ -15,6 +15,15 @@ public final class AgentRequestRenderer {
 
     public static Map<String, Object> render(Step step, Process process, String stepExecutionId,
                                               String deadlineAt) {
+        return render(step, process, stepExecutionId, deadlineAt, Map.of());
+    }
+
+    /**
+     * The request, its templates read over the process and — for a forEach iteration — its scope ({@code item},
+     * {@code index} and the loop's own names, typed), as HTTP_CALL and LLM_CALL render theirs.
+     */
+    public static Map<String, Object> render(Step step, Process process, String stepExecutionId,
+                                              String deadlineAt, Map<String, Object> scope) {
         var agent = step.agent();
         if (agent == null || agent.ref() == null || agent.ref().isBlank()
                 || agent.outputVariable() == null || agent.outputVariable().isBlank()) {
@@ -31,7 +40,7 @@ public final class AgentRequestRenderer {
                         .toList());
             }
         }
-        var context = TemplateContext.of(process, step, stepExecutionId);
+        var context = TemplateContext.of(process, step, stepExecutionId, scope == null ? Map.of() : scope);
         var payload = new LinkedHashMap<String, Object>();
         payload.put("schemaVersion", 1);
         payload.put("agentRef", agent.ref());
