@@ -5,11 +5,9 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.mateu.workflow.application.out.ProcessRepository;
 import io.mateu.workflow.application.out.ProcessSnapshotReader;
 import io.mateu.workflow.application.out.StepExecutionRepository;
-import io.mateu.workflow.application.out.WorkflowDefinitionRepository;
 import io.mateu.workflow.application.services.ProcessOperationsService;
 import io.mateu.workflow.application.services.WorkflowDefinitionValidator;
 import io.mateu.workflow.application.services.WorkflowTestRunService;
-import io.mateu.workflow.domain.aggregates.StepType;
 import io.mateu.workflow.domain.aggregates.WorkflowDefinition;
 import io.mateu.workflow.infra.config.MessageApiProperties;
 import io.mateu.workflow.infra.in.monitoring.ProcessGraphProjection;
@@ -47,7 +45,6 @@ public class WorkflowExecutionController {
     private final ProcessOperationsService processes;
     private final ProcessRepository repository;
     private final StepExecutionRepository steps;
-    private final WorkflowDefinitionRepository definitions;
     private final ProcessSnapshotReader snapshots;
     private final WorkflowDefinitionValidator validator;
     private final MessageApiProperties access;
@@ -57,12 +54,12 @@ public class WorkflowExecutionController {
 
     public WorkflowExecutionController(WorkflowTestRunService tests, ProcessOperationsService processes,
                                        ProcessRepository repository, StepExecutionRepository steps,
-                                       WorkflowDefinitionRepository definitions, ProcessSnapshotReader snapshots,
+                                       ProcessSnapshotReader snapshots,
                                        WorkflowDefinitionValidator validator, MessageApiProperties access,
                                        ObjectProvider<CallerResolver> callers,
                                        @Value("${workflow.test-runs.enabled:false}") boolean enabled) {
         this.tests = tests; this.processes = processes; this.repository = repository; this.steps = steps;
-        this.definitions = definitions; this.snapshots = snapshots; this.validator = validator;
+        this.snapshots = snapshots; this.validator = validator;
         this.access = access; this.callers = callers; this.enabled = enabled;
     }
 
@@ -80,7 +77,10 @@ public class WorkflowExecutionController {
 
     @PostMapping("/test-runs")
     @Operation(operationId = "startWorkflowTestRun", summary = "Run a document without publishing it",
-            description = "Requires workflow.test-runs.enabled=true (off by default). Calls real workers."
+            description = "Requires workflow.test-runs.enabled=true (off by default) and a caller holding"
+                    + " workflow.test-runs.required-roles (falls back to workflow.security.operations.required-roles;"
+                    + " none configured is 403). Calls real workers. Runs under a private definition id,"
+                    + " vscode-<id>-<runId>, never the published one."
                     + " Idempotent on runId; reusing it with another document or input is 409."
                     + " Manual start only: no schedules, triggers or startPolicy admission is registered.")
     public ResponseEntity<ProcessApi.ProcessView> start(
@@ -106,10 +106,6 @@ public class WorkflowExecutionController {
         validator.validate(definition);
         try { definition.checkInvariants(); }
         catch (IllegalStateException error) { throw new IllegalArgumentException(error.getMessage(), error); }
-        boolean latest = definition.steps().stream().anyMatch(step -> step.type() == StepType.CONTINUE_AS_NEW
-                && step.continueAsNew() != null && step.continueAsNew().latest());
-        if (latest && definitions.findById(id).isEmpty())
-            throw new IllegalArgumentException("CONTINUE_AS_NEW latest requires a registered definition named '" + id + "'.");
         String request = document + "\n" + json.writeValueAsString(body.variables() == null ? Map.of() : body.variables());
         String digest = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(request.getBytes(StandardCharsets.UTF_8)));
         var result = tests.start(body.runId(), definition, ProcessRestController.variablesOf(body.variables()), digest, caller());
@@ -127,6 +123,9 @@ public class WorkflowExecutionController {
         var process = processes.get(id, caller);
         var executions = processes.steps(id, caller);
         var logs = processes.logs(id, caller);
+        if (process.getWorkflowDefinitionJson() == null || process.getWorkflowDefinitionJson().isBlank())
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Process '" + id + "' has no frozen definition snapshot, so its graph cannot be drawn.");
         var projection = ProcessGraphProjection.project(snapshots.read(process.getWorkflowDefinitionJson()), process, executions, logs);
         String parent = process.getParentStepExecutionId() == null ? null
                 : steps.findById(process.getParentStepExecutionId()).map(step -> step.getProcessId()).orElse(null);
@@ -136,7 +135,9 @@ public class WorkflowExecutionController {
 
     @GetMapping("/processes/{id}/children")
     @Operation(operationId = "getProcessChildren", summary = "Direct child runs, linked to their parent step execution",
-            description = "Includes earlier attempts, iterations and continuations. Paged oldest first; no recursive traversal.")
+            description = "Includes earlier attempts, iterations and continuations. Paged oldest first; no recursive traversal."
+                    + " A page holding a child the caller may not read is refused whole with 403, so that"
+                    + " totalElements never counts runs the caller cannot see.")
     public ChildrenPage children(@Parameter(hidden = true) @RequestHeader(value = "X-Api-Key", required = false) String apiKey,
                                   @PathVariable String id, @RequestParam(defaultValue = "0") int page,
                                   @RequestParam(defaultValue = "20") int size, @RequestParam(required = false) String stepId) {

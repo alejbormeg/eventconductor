@@ -15,7 +15,8 @@ was performed.
   workspace trust, immutable submission retries, credential isolation and closing during POST.
 - `WorkflowExecutionControllerTest`: real MVC request binding, schema validation, authorization,
   graph projection and test-run service, with an in-memory store and a mocked creator. Covers
-  opt-in access, replay/conflict, anonymous access, source/published permissions, generated IDs,
+  opt-in access, replay/conflict, anonymous access, the mandatory test-run role (also with flow
+  authorization off), private `vscode-<id>-<runId>` IDs, refused migration, snapshot permissions,
   masking, injected nodes, omission of prompts/inputs and paginated source-execution relations.
 - `IdeExecutionPersistenceTest`: V58 and JPA mappings on migrated H2, retained test metadata,
   direct-child SQL join, pagination/filtering, and normal processes defaulting to non-test.
@@ -25,7 +26,7 @@ was performed.
 - `IdeTestRunsTest`: the real embedded engine, synthetic task/model/agent stubs and a test clock.
   An unpublished workflow executes every current StepType except CONTINUE_AS_NEW; the test
   asserts the completed type inventory against the enum (REMOVED is intentionally excluded).
-  Separate cases execute CONTINUE_AS_NEW same/latest and check effective versions, marker and
+  Separate cases execute CONTINUE_AS_NEW same, refuse latest, and check effective versions, marker and
   initiator propagation. Scenarios include nested child processes, forEach items, parallelism,
   HTTP retries, human/agent review, timers/messages, dynamic injection, repeats/loopBacks,
   missing child definitions and unavailable workers. Published definitions remain unchanged.

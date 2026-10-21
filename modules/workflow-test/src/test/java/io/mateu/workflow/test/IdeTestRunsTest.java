@@ -16,7 +16,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /** Execute unpublished snapshots through the real engine; every external dependency is synthetic. */
-@EventConductorTest
+@EventConductorTest(properties = "workflow.test-runs.required-roles=ide-tester")
 class IdeTestRunsTest {
     @Autowired WorkflowTestRunService tests;
     @Autowired WorkflowDefinitionRepository definitions;
@@ -30,7 +30,7 @@ class IdeTestRunsTest {
     }
     TestProcess start(WorkflowTestRuntime runtime, WorkflowDefinition def, List<Variable> variables) {
         String id = UUID.randomUUID().toString();
-        tests.start(id, def, variables, "synthetic-digest", new AuthorizationContext("ide-author", List.of(), List.of()));
+        tests.start(id, def, variables, "synthetic-digest", new AuthorizationContext("ide-author", List.of(), List.of("ide-tester")));
         runtime.runUntilIdle();
         return runtime.process("ide-test:"+id);
     }
@@ -88,10 +88,14 @@ class IdeTestRunsTest {
         assertThat(executed).containsAll(expected);
     }
 
-    @Test void sameKeepsTheDraftAndLatestUsesThePublishedVersionWhileBothKeepTheTestMarker(WorkflowTestRuntime runtime) {
+    @Test void sameKeepsTheDraftAndTheTestMarkerWhileLatestIsRefused(WorkflowTestRuntime runtime) {
         runtime.whenStep("bill").thenComplete();
         var published = definitions.findById("subscription").orElseThrow();
-        for (String mode : List.of("same","latest")) {
+        var latest = published.withSteps(published.steps().stream()
+            .map(s -> s.type()==StepType.CONTINUE_AS_NEW?s.withContinueAsNew(new ContinueAsNew("latest",null)):s).toList());
+        assertThatThrownBy(() -> start(runtime,latest,List.of(new Variable("customerId","IDE-latest"),new Variable("period","0"))))
+            .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("latest");
+        for (String mode : List.of("same")) {
             var draft = published.withVersion(81).withSteps(published.steps().stream()
                 .map(s -> s.type()==StepType.CONTINUE_AS_NEW?s.withContinueAsNew(new ContinueAsNew(mode,null)):s).toList());
             var first = start(runtime,draft,List.of(new Variable("customerId","IDE-"+mode),new Variable("period","0")));
@@ -101,7 +105,8 @@ class IdeTestRunsTest {
             assertThat(next.state().getContinuedFromProcessId()).isEqualTo(first.id());
             assertThat(next.state().isTestRun()).isTrue();
             assertThat(next.state().getInitiatingActor()).isEqualTo("ide-author");
-            assertThat(next.state().getWorkflowDefinitionVersion()).isEqualTo(mode.equals("same")?81:published.version());
+            assertThat(next.state().getWorkflowDefinitionVersion()).isEqualTo(81);
+            assertThat(next.state().getWorkflowDefinitionId()).startsWith("vscode-subscription-");
             assertThat(definitions.findById("subscription").orElseThrow().version()).isEqualTo(published.version());
         }
     }

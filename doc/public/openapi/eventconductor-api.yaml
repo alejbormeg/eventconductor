@@ -812,7 +812,9 @@ paths:
   /workflow/api/processes/{id}/children:
     get:
       description: "Includes earlier attempts, iterations and continuations. Paged\
-        \ oldest first; no recursive traversal."
+        \ oldest first; no recursive traversal. A page holding a child the caller\
+        \ may not read is refused whole with 403, so that totalElements never counts\
+        \ runs the caller cannot see."
       operationId: getProcessChildren
       parameters:
       - in: path
@@ -1742,10 +1744,12 @@ paths:
       - schedule-rest-controller
   /workflow/api/test-runs:
     post:
-      description: "Requires workflow.test-runs.enabled=true (off by default). Calls\
-        \ real workers. Idempotent on runId; reusing it with another document or input\
-        \ is 409. Manual start only: no schedules, triggers or startPolicy admission\
-        \ is registered."
+      description: "Requires workflow.test-runs.enabled=true (off by default) and\
+        \ a caller holding workflow.test-runs.required-roles (falls back to workflow.security.operations.required-roles;\
+        \ none configured is 403). Calls real workers. Runs under a private definition\
+        \ id, vscode-<id>-<runId>, never the published one. Idempotent on runId; reusing\
+        \ it with another document or input is 409. Manual start only: no schedules,\
+        \ triggers or startPolicy admission is registered."
       operationId: startWorkflowTestRun
       requestBody:
         content:

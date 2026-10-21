@@ -36,7 +36,9 @@ public class WorkflowTestRunConfiguration {
     WorkflowTestRunService workflowTestRunService(ProcessRepository processes, WorkflowDefinitionRepository definitions,
                                                 CreateProcessUseCase creator, TestRunMutex locks,
                                                 ProcessSnapshotReader snapshots,
-                                                @Value("${workflow.security.flow-authorization.enabled:false}") boolean authorization) {
-        return new WorkflowTestRunService(processes, definitions, creator, locks, snapshots, authorization);
+                                                @Value("${workflow.security.flow-authorization.enabled:false}") boolean authorization,
+                                                @Value("${workflow.test-runs.required-roles:${workflow.security.operations.required-roles:}}")
+                                                java.util.List<String> requiredRoles) {
+        return new WorkflowTestRunService(processes, definitions, creator, locks, snapshots, authorization, requiredRoles);
     }
 }

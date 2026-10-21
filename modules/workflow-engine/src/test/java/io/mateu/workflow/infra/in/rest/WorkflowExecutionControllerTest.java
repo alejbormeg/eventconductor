@@ -20,6 +20,8 @@ import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicReference;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import io.mateu.workflow.application.usecases.process.operate.ProcessOperationRules;
 import static org.hamcrest.Matchers.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
@@ -35,7 +37,8 @@ class WorkflowExecutionControllerTest {
     final CreateProcessUseCase creator = mock(CreateProcessUseCase.class);
     final MessageApiProperties access = new MessageApiProperties();
     final JsonProcessSnapshotReader snapshots = new JsonProcessSnapshotReader();
-    final AtomicReference<AuthorizationContext> caller = new AtomicReference<>(new AuthorizationContext("alice", List.of(), List.of()));
+    final AtomicReference<AuthorizationContext> caller = new AtomicReference<>(new AuthorizationContext("alice", List.of(), List.of(TESTER)));
+    static final String TESTER = "workflow-tester";
     MockMvc mvc;
     ProcessOperationsService operations;
     final String runId = "a7d8b95a-eae4-4416-b38b-e85a6f0a24db";
@@ -58,19 +61,25 @@ class WorkflowExecutionControllerTest {
     }
 
     MockMvc mvc(boolean enabled, boolean authorization) {
+        return mvc(enabled, authorization, List.of(TESTER));
+    }
+
+    MockMvc mvc(boolean enabled, boolean authorization, List<String> testerRoles) {
         var beans = new StaticListableBeanFactory();
         beans.addBean("caller", (CallerResolver) caller::get);
         var index = beans.getBeanProvider(ProcessIndexRepository.class);
         var listing = new ProcessListingService(store, index, new ProcessStatusAnnouncer(false, ""),
             new StaticListableBeanFactory(Map.of("definitions", definitions)).getBeanProvider(WorkflowDefinitionRepository.class));
         operations = new ProcessOperationsService(store, steps, new InMemoryLogMessageRepository(), definitions, creator,
-            new CommandDispatcher(event -> {}, event -> {}, false), listing, new ProcessStatusAnnouncer(false, ""), index, authorization);
-        operations.setTestRunSnapshots(snapshots);
-        var service = new WorkflowTestRunService(store, definitions, creator, (id, action) -> { synchronized(store) { action.run(); } }, snapshots, authorization);
+            new CommandDispatcher(event -> {}, event -> {}, false), listing, new ProcessStatusAnnouncer(false, ""), index, authorization,
+            new ProcessOperationRules(new io.mateu.workflow.domain.services.CompensationService()), List.of(),
+            new StaticListableBeanFactory(Map.of("snapshots", snapshots)).getBeanProvider(ProcessSnapshotReader.class));
+        var service = new WorkflowTestRunService(store, definitions, creator, (id, action) -> { synchronized(store) { action.run(); } },
+            snapshots, authorization, testerRoles);
         var validator = new WorkflowDefinitionValidator();
         org.springframework.test.util.ReflectionTestUtils.setField(validator, "encryption", SensitiveFixtures.keys());
         return MockMvcBuilders.standaloneSetup(new WorkflowExecutionController(service, operations, store, steps,
-            definitions, snapshots, validator, access, beans.getBeanProvider(CallerResolver.class), enabled),
+            snapshots, validator, access, beans.getBeanProvider(CallerResolver.class), enabled),
             new ProcessRestController(operations, access, beans.getBeanProvider(CallerResolver.class))).build();
     }
 
@@ -92,6 +101,7 @@ class WorkflowExecutionControllerTest {
         var body = request(DOCUMENT, Map.of("items", List.of(1,2), "amount", 10));
         mvc.perform(post("/workflow/api/test-runs").contentType("application/json").content(body))
             .andExpect(status().isCreated()).andExpect(jsonPath("$.definitionVersion").value(7))
+            .andExpect(jsonPath("$.definitionId").value("vscode-draft-"+runId))
             .andExpect(jsonPath("$.variables.items").value("[1,2]"));
         mvc.perform(post("/workflow/api/test-runs").contentType("application/json").content(body))
             .andExpect(status().isOk()).andExpect(jsonPath("$.id").value(runId));
@@ -114,7 +124,7 @@ class WorkflowExecutionControllerTest {
         verify(definitions, never()).save(any());
     }
 
-    @Test void rejectsTyposMalformedIdsAndAnUnregisteredLatestContinuation() throws Exception {
+    @Test void rejectsTyposMalformedIdsAndAnyLatestContinuation() throws Exception {
         for (String document : List.of(DOCUMENT.replace("\"version\":7", "\"versoin\":7"),
             DOCUMENT.replace("\"type\":\"END\"", "\"type\":\"AGENT_CALL\""),
             DOCUMENT.replace("\"type\":\"END\"", "\"type\":\"CONTINUE_AS_NEW\",\"continueAsNew\":{\"version\":\"latest\"}"))) {
@@ -126,19 +136,66 @@ class WorkflowExecutionControllerTest {
         verifyNoInteractions(creator);
     }
 
-    @Test void aDraftCannotRemovePublishedPermissionsAndSnapshotPermissionsProtectEveryRead() throws Exception {
-        var restricted = json.readValue(DOCUMENT.replace("\"version\":7", "\"version\":7,\"requiredScopes\":[\"draft:read\"]"), WorkflowDefinition.class);
-        when(definitions.findById("draft")).thenReturn(Optional.of(restricted));
-        var secured = mvc(true, true);
-        secured.perform(post("/workflow/api/test-runs").contentType("application/json").content(request(DOCUMENT, Map.of())))
+    @Test void aTestRunNeedsTheConfiguredRoleEvenWithFlowAuthorizationOff() throws Exception {
+        caller.set(new AuthorizationContext("mallory", List.of(), List.of()));
+        mvc.perform(post("/workflow/api/test-runs").contentType("application/json").content(request(DOCUMENT, Map.of())))
             .andExpect(status().isForbidden());
-        caller.set(new AuthorizationContext("bob", List.of("draft:read"), List.of()));
-        secured.perform(post("/workflow/api/test-runs").contentType("application/json")
-            .content(request(json.writeValueAsString(restricted), Map.of()))).andExpect(status().isCreated());
-        when(definitions.findById("draft")).thenReturn(Optional.empty());
-        caller.set(new AuthorizationContext("alice", List.of(), List.of()));
+        caller.set(null);
+        mvc.perform(post("/workflow/api/test-runs").contentType("application/json").content(request(DOCUMENT, Map.of())))
+            .andExpect(status().isForbidden());
+        caller.set(new AuthorizationContext("alice", List.of(), List.of(TESTER)));
+        mvc(true, false, List.of()).perform(post("/workflow/api/test-runs").contentType("application/json").content(request(DOCUMENT, Map.of())))
+            .andExpect(status().isForbidden()).andExpect(jsonPath("$.detail", containsString("workflow.test-runs.required-roles")));
+        verifyNoInteractions(creator);
+        mvc.perform(post("/workflow/api/test-runs").contentType("application/json").content(request(DOCUMENT, Map.of())))
+            .andExpect(status().isCreated());
+    }
+
+    @Test void theDocumentCannotGrantItselfTheTestRole() throws Exception {
+        caller.set(new AuthorizationContext("mallory", List.of(), List.of("self-declared")));
+        var document = DOCUMENT.replace("\"version\":7", "\"version\":7,\"requiredRoles\":[\"self-declared\"]");
+        mvc(true, true).perform(post("/workflow/api/test-runs").contentType("application/json").content(request(document, Map.of())))
+            .andExpect(status().isForbidden());
+        verifyNoInteractions(creator);
+    }
+
+    @Test void aPublishedIdRunsUnderItsOwnIdAndIsNeverMigrated() throws Exception {
+        when(definitions.findById("draft")).thenReturn(Optional.of(json.readValue(DOCUMENT, WorkflowDefinition.class)));
+        mvc.perform(post("/workflow/api/test-runs").contentType("application/json").content(request(DOCUMENT, Map.of())))
+            .andExpect(status().isCreated()).andExpect(jsonPath("$.definitionId").value("vscode-draft-"+runId));
+        var run = store.findById(runId).orElseThrow();
+        assertThat(run.getWorkflowDefinitionId()).isEqualTo("vscode-draft-"+runId);
+        assertThat(snapshots.read(run.getWorkflowDefinitionJson()).steps())
+            .allSatisfy(step -> assertThat(step.workflowDefinitionId()).isEqualTo("vscode-draft-"+runId));
+        assertThatThrownBy(() -> operations.dryRunMigration(runId, null, Map.of(), Map.of(), caller.get()))
+            .isInstanceOf(ProcessOperationsService.ProcessStateConflictException.class).hasMessageContaining("test run");
+        assertThatThrownBy(() -> operations.migrate(runId, null, Map.of(), Map.of(), "synthetic", caller.get()))
+            .isInstanceOf(ProcessOperationsService.ProcessStateConflictException.class).hasMessageContaining("test run");
+    }
+
+    @Test void aPublishedDefinitionHoldingTheTestRunIdIsAConflict() throws Exception {
+        when(definitions.findById("vscode-draft-"+runId)).thenReturn(Optional.of(json.readValue(DOCUMENT, WorkflowDefinition.class)));
+        mvc.perform(post("/workflow/api/test-runs").contentType("application/json").content(request(DOCUMENT, Map.of())))
+            .andExpect(status().isConflict());
+        verifyNoInteractions(creator);
+    }
+
+    @Test void snapshotPermissionsProtectEveryReadOfATestRun() throws Exception {
+        var restricted = DOCUMENT.replace("\"version\":7", "\"version\":7,\"requiredScopes\":[\"draft:read\"]");
+        var secured = mvc(true, true);
+        caller.set(new AuthorizationContext("bob", List.of("draft:read"), List.of(TESTER)));
+        secured.perform(post("/workflow/api/test-runs").contentType("application/json").content(request(restricted, Map.of())))
+            .andExpect(status().isCreated());
+        caller.set(new AuthorizationContext("alice", List.of(), List.of(TESTER)));
         for (var suffix : List.of("", "/graph", "/children", "/variables", "/steps", "/logs"))
             secured.perform(get("/workflow/api/processes/" + runId + suffix)).andExpect(status().isForbidden());
+    }
+
+    @Test void aGraphWithoutASnapshotIsAConflictRatherThanAServerError() throws Exception {
+        store.save(Process.builder().id(runId).workflowDefinitionId("draft").workflowDefinitionVersion(7).name("Draft")
+            .status(ProcessStatus.RUNNING).variables(List.of()).build());
+        mvc.perform(get("/workflow/api/processes/"+runId+"/graph")).andExpect(status().isConflict())
+            .andExpect(jsonPath("$.detail", containsString("snapshot")));
     }
 
     @Test void graphUsesTheEffectiveSnapshotIncludesInjectedStepsAndMasksVariables() throws Exception {

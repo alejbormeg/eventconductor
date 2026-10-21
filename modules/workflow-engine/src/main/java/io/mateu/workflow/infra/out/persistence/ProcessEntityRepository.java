@@ -142,6 +142,7 @@ public interface ProcessEntityRepository extends JpaRepository<ProcessEntity, St
                    p.created as created, p.started as started, p.finished as finished
             from ProcessEntity p
             where p.created is not null
+              and p.testRun = false
               and (cast(:createdFrom as LocalDateTime) is null or p.created >= :createdFrom)
               and (cast(:createdTo as LocalDateTime) is null or p.created <= :createdTo)
             """)
@@ -157,6 +158,7 @@ public interface ProcessEntityRepository extends JpaRepository<ProcessEntity, St
                    count(p) as count, min(p.name) as anyName
             from ProcessEntity p
             where p.created is not null
+              and p.testRun = false
               and (cast(:createdFrom as LocalDateTime) is null or p.created >= :createdFrom)
               and (cast(:createdTo as LocalDateTime) is null or p.created <= :createdTo)
             group by p.workflowDefinitionId, p.status
@@ -169,6 +171,7 @@ public interface ProcessEntityRepository extends JpaRepository<ProcessEntity, St
             select p.workflowDefinitionId as definitionId, cast(p.created as LocalDate) as day, count(p) as count
             from ProcessEntity p
             where p.created is not null
+              and p.testRun = false
               and (cast(:createdFrom as LocalDateTime) is null or p.created >= :createdFrom)
               and (cast(:createdTo as LocalDateTime) is null or p.created <= :createdTo)
             group by p.workflowDefinitionId, cast(p.created as LocalDate)
@@ -181,6 +184,7 @@ public interface ProcessEntityRepository extends JpaRepository<ProcessEntity, St
             select p.workflowDefinitionId as definitionId, cast(p.finished as LocalDate) as day, count(p) as count
             from ProcessEntity p
             where p.created is not null and p.finished is not null
+              and p.testRun = false
               and (cast(:createdFrom as LocalDateTime) is null or p.created >= :createdFrom)
               and (cast(:createdTo as LocalDateTime) is null or p.created <= :createdTo)
             group by p.workflowDefinitionId, cast(p.finished as LocalDate)
@@ -207,6 +211,7 @@ public interface ProcessEntityRepository extends JpaRepository<ProcessEntity, St
                    ) as p95Nanos
             from ProcessEntity p
             where p.created is not null and p.finished is not null
+              and p.testRun = false
               and (cast(:createdFrom as LocalDateTime) is null or p.created >= :createdFrom)
               and (cast(:createdTo as LocalDateTime) is null or p.created <= :createdTo)
             group by p.workflowDefinitionId

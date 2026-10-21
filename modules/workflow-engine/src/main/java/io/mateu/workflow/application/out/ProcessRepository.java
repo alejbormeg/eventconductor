@@ -16,7 +16,13 @@ public interface ProcessRepository extends CrudStore<Process> {
 
     record ChildrenPage(List<Process> content, int page, int size, long totalElements) {}
 
-    /** Direct descendants only; iteration/retry identity remains on parentStepExecutionId. */
+    /**
+     * Direct descendants only; iteration/retry identity remains on parentStepExecutionId.
+     *
+     * <p>{@code parentStepIds} are the parent's own step executions (already narrowed to {@code stepId}
+     * by the caller), so they scope the page to {@code parentProcessId}. This in-memory default scans
+     * {@code findAll()}, which suits memory mode only; the JPA store answers with an indexed join.
+     */
     default ChildrenPage findChildren(String parentProcessId, java.util.Set<String> parentStepIds, String stepId, int page, int size) {
         var children = findAll().stream().filter(process -> parentStepIds.contains(process.getParentStepExecutionId()))
                 .sorted(Comparator.comparing(Process::getCreated, Comparator.nullsFirst(Comparator.naturalOrder()))
@@ -103,6 +109,7 @@ public interface ProcessRepository extends CrudStore<Process> {
      */
     default List<ProcessAnalyticsRow> findAnalyticsRows(LocalDateTime createdFrom, LocalDateTime createdTo) {
         return findAll().stream()
+                .filter(process -> !process.isTestRun())
                 .filter(process -> withinWindow(process.getCreated(), createdFrom, createdTo))
                 .map(ProcessAnalyticsRow::from)
                 .toList();
