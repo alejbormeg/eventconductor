@@ -134,7 +134,9 @@ export class EngineClient {
         response.on("end", () => {
           let result: any;
           try { result = JSON.parse(Buffer.concat(chunks).toString("utf8")); } catch { /* non-JSON errors remain generic */ }
-          if (status === 401 || status === 403) {
+          if (status === 403 && path === "test-runs") {
+            finish(new EngineError("The engine refused the test run. The connection's identity needs a role listed in workflow.test-runs.required-roles.", status));
+          } else if (status === 401 || status === 403) {
             finish(new EngineError("Engine access denied. Check the connection credentials and workflow permissions.", status));
           } else if (status === 404 && path === "test-runs") {
             finish(new EngineError("Test runs are unavailable. Update the engine and enable workflow.test-runs.enabled=true.", status));

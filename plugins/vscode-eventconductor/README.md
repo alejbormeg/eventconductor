@@ -55,7 +55,9 @@ importing the workflow.
 
 This requires an engine containing the IDE execution API and database migration **V58**.
 On a **test engine**, enable `workflow.test-runs.enabled=true` (default: `false`). Keep the
-engine's normal authentication configured; this flag does not grant access. Workers, agent
+engine's normal authentication configured; this flag does not grant access. The connection's
+identity must also hold a role listed in `workflow.test-runs.required-roles` (falling back to
+`workflow.security.operations.required-roles`); with none configured, every test run is refused. Workers, agent
 catalogues, connections and credentials must exist on that engine. Tasks have real effects.
 
 1. Install the supplied VSIX with **Extensions → … → Install from VSIX…**. No terminal tools
@@ -147,14 +149,17 @@ your deployed workers or external services. See [validation evidence](EXECUTION-
 - Subprocess definitions must already be deployed. Running a file does not upload its siblings.
 - Human tasks and agents under review wait for intervention through the existing tools.
 - Timers and messages wait for real time and real events on your engine.
-- `CONTINUE_AS_NEW` with `version: same` preserves the draft snapshot. `version: latest`
-  uses the registered definition; an unregistered root using `latest` is refused at submission.
+- Each run executes under a private definition ID, `vscode-<id>-<runId>`, so it never mixes
+  with a published definition's instances, analytics or migrations.
+- `CONTINUE_AS_NEW` with `version: same` preserves the draft snapshot. `version: latest` is
+  refused at submission, since a test run has no published definition to continue on.
 - This is a manual start. It does not register cron schedules, event triggers or startPolicy
   admission. Stop execution is supported; there are no breakpoints, other operational controls or agent/worker internal traces.
 - The graph response omits request/prompt payloads. Variables follow the engine's sensitive
   variable masking. Use the engine's existing reveal/audit tools when permitted.
-- Existing authentication and, when enabled, flow roles/scopes apply. A draft cannot remove
-  its registered definition's access requirements, and its frozen requirements protect reads.
+- Existing authentication and the test-run role always apply. Roles or scopes declared in the
+  draft never grant access; with flow authorization on they are required too, and the draft's
+  frozen requirements protect reads of the run.
 
 ## Develop
 

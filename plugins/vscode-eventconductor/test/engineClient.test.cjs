@@ -48,6 +48,8 @@ test('denied access and an old or disabled engine produce actionable messages', 
   const url = await server(t, (_, res) => { res.writeHead(status); res.end('<html>private error</html>'); });
   const client = new EngineClient(url);
   await assert.rejects(client.graph(ID), error => error instanceof EngineError && error.status === 401 && !error.message.includes('private'));
+  status = 403;
+  await assert.rejects(client.start({ runId: ID }), error => error.status === 403 && /test-runs.required-roles/.test(error.message));
   status = 404;
   await assert.rejects(client.start({ runId: ID }), /test-runs.enabled=true/);
 });
