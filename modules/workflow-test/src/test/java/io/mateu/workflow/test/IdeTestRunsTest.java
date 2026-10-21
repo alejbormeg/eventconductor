@@ -17,12 +17,22 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /** Execute unpublished snapshots through the real engine; every external dependency is synthetic. */
 @EventConductorTest(properties = "workflow.test-runs.required-roles=ide-tester")
+@org.springframework.context.annotation.Import(IdeTestRunsTest.Metrics.class)
 class IdeTestRunsTest {
     @Autowired WorkflowTestRunService tests;
     @Autowired WorkflowDefinitionRepository definitions;
     @Autowired ProcessRepository processes;
     @Autowired InjectStepsUseCase inject;
     @Autowired ProcessSnapshotReader snapshots;
+    @Autowired io.micrometer.core.instrument.MeterRegistry meters;
+
+    @org.springframework.boot.test.context.TestConfiguration
+    static class Metrics {
+        @org.springframework.context.annotation.Bean
+        io.micrometer.core.instrument.MeterRegistry meterRegistry() {
+            return new io.micrometer.core.instrument.simple.SimpleMeterRegistry();
+        }
+    }
 
     WorkflowDefinition definition(String document) {
         var def = JsonSerializer.pojoFromJson(document, WorkflowDefinition.class);
@@ -125,6 +135,23 @@ class IdeTestRunsTest {
         assertThat(loop.stepExecutions("review")).hasSize(2);
         assertThat(loop.stepExecutions("a")).extracting(s -> s.getIteration()).contains(0,1);
         assertThat(loop.state().getWorkflowDefinitionVersion()).isEqualTo(92);
+    }
+
+    @Test void repeatedTestRunsOpenNoMetricSeriesPerRun(WorkflowTestRuntime runtime) {
+        var draft = child("ide-metrics", null);
+        runtime.whenStep("child-work").thenComplete();
+        start(runtime, draft, List.of());
+        int afterFirst = meters.getMeters().size();
+        var started = meters.find("eventconductor.process.started").tag("workflowDefinitionId", "vscode-test-run").counter();
+        assertThat(started).isNotNull();
+        double before = started.count();
+        for (int i = 0; i < 3; i++) start(runtime, draft, List.of());
+        assertThat(meters.getMeters().size()).isEqualTo(afterFirst);
+        assertThat(started.count() - before).isEqualTo(3);
+        assertThat(meters.getMeters()).noneMatch(meter -> {
+            String tag = meter.getId().getTag("workflowDefinitionId");
+            return tag != null && tag.startsWith("vscode-") && !tag.equals("vscode-test-run");
+        });
     }
 
     @Test void aMissingChildAndAnUnavailableWorkerSurfaceTheirNormalFailuresAndWaits(WorkflowTestRuntime runtime) {

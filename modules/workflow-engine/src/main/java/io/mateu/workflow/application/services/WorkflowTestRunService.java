@@ -8,6 +8,7 @@ import io.mateu.workflow.application.usecases.process.create.CreateProcessComman
 import io.mateu.workflow.application.usecases.process.create.CreateProcessUseCase;
 import io.mateu.workflow.domain.aggregates.Process;
 import io.mateu.workflow.domain.aggregates.StepType;
+import io.mateu.workflow.domain.aggregates.TestRunIds;
 import io.mateu.workflow.domain.aggregates.Variable;
 import io.mateu.workflow.domain.aggregates.WorkflowDefinition;
 import io.mateu.workflow.input.InputLimits;
@@ -51,8 +52,7 @@ public final class WorkflowTestRunService {
 
     /** The private id a run executes under: {@code vscode-<runId>}, or {@code vscode-<id>-<runId>} for a named document. */
     public static String definitionIdOf(String documentId, String runId) {
-        String own = "vscode-" + runId;
-        return documentId == null || documentId.isBlank() || documentId.equals(own) ? own : "vscode-" + documentId + "-" + runId;
+        return TestRunIds.of(documentId, runId);
     }
 
     public record Started(Process process, boolean created) {}
